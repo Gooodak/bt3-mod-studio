@@ -11,7 +11,7 @@ FIELD = "#2a3246"       # inputs
 FIELD_HI = "#34405a"    # inputs under the mouse
 BORDER = "#323c54"
 TEXT = "#e8ecf4"
-MUTED = "#8a95ab"
+MUTED = "#a3adc2"       # (6:1 on the cards: readable small text)
 ACCENT = "#ff8c1a"      # Goku's gi
 ACCENT_HI = "#ffa54a"
 ACCENT_DK = "#cf6c0a"
@@ -24,25 +24,73 @@ GOOD = "#4cc38a"
 SKY_TOP, SKY_BOTTOM = "#2b55a0", "#141c2e"   # behind the character's picture
 
 S = 1.0                 # screen pixels per 1/96 inch (set by setup)
+Z = 1.0                 # the person's text size (1 = normal; set_zoom)
+ZOOMS = (0.9, 1.0, 1.1, 1.25, 1.4, 1.6)
 
 
 def px(n):
     return int(round(n * S))
 
 
-FONT = ("Segoe UI", 10)
-SMALL = ("Segoe UI", 9)
-BOLD = ("Segoe UI Semibold", 10)
-SECTION = ("Segoe UI Semibold", 12)
-TITLE = ("Segoe UI Semibold", 19)
-APP_TITLE = ("Segoe UI Semibold", 14)
-PLATE = ("Segoe UI Semibold", 13)
+def pz(n):
+    """px for a size that follows the text size."""
+    return int(round(n * S * Z))
 
 
-def setup(root):
-    """Makes the ttk styles; returns the screen scale."""
-    global S
+# The fonts are named Tk fonts: a change of the text size changes them, and every widget follows.
+FONT_SPECS = {"FONT": ("Segoe UI", 10), "SMALL": ("Segoe UI", 9), "BOLD": ("Segoe UI Semibold", 10),
+              "SECTION": ("Segoe UI Semibold", 12), "TITLE": ("Segoe UI Semibold", 19),
+              "APP_TITLE": ("Segoe UI Semibold", 14), "PLATE": ("Segoe UI Semibold", 13), "MONO": ("Consolas", 9)}
+FONT, SMALL, BOLD, SECTION, TITLE, APP_TITLE, PLATE, MONO = FONT_SPECS.values()  # (named by setup)
+_fonts = {}
+_fonts_root = None
+
+
+def _make_fonts(root):
+    import tkinter.font as tkfont
+    global _fonts_root
+    if root is not None and root is not _fonts_root:  # (a new window: a new Tk, its own fonts)
+        _fonts.clear()
+        _fonts_root = root
+    for name, (family, size) in FONT_SPECS.items():
+        if name not in _fonts:
+            _fonts[name] = tkfont.Font(root, name="bt3" + name.lower(), family=family, size=size)
+        _fonts[name].configure(size=max(7, int(round(size * Z))))
+        globals()[name] = _fonts[name].name
+
+
+def set_zoom(z):
+    """Another text size: the fonts change at once (the sizes made with pz follow when a page is made again)."""
+    global Z
+    Z = z
+    _make_fonts(None)
+
+
+def text_lines(font, text, width):
+    """How many lines Tk needs for `text` wrapped at `width` pixels."""
+    f = next((x for x in _fonts.values() if x.name == font), None)
+    if f is None:
+        return text.count("\n") + 1
+    n = 0
+    for para in text.split("\n"):
+        n += 1
+        line = ""
+        for word in para.split(" "):
+            cand = word if not line else line + " " + word
+            if not line or f.measure(cand) <= width:
+                line = cand
+            else:
+                n += 1
+                line = word
+    return n
+
+
+def setup(root, zoom=1.0):
+    """Makes the fonts and the ttk styles; returns the screen scale."""
+    global S, Z
     S = max(1.0, root.winfo_fpixels("1i") / 96.0)
+    Z = zoom
+    _make_fonts(root)
     root.configure(bg=BG)
     st = ttk.Style(root)
     st.theme_use("clam")
@@ -53,6 +101,7 @@ def setup(root):
         st.configure(name + "TFrame", background=bg)
         st.configure(name + "TLabel", background=bg, foreground=TEXT)
         st.configure(name + "Muted.TLabel", background=bg, foreground=MUTED, font=SMALL)
+        st.configure(name + "Hint.TLabel", background=bg, foreground=MUTED, font=FONT)
         st.configure(name + "Title.TLabel", background=bg, foreground=TEXT, font=SECTION)
         st.configure(name + "Accent.TLabel", background=bg, foreground=ACCENT, font=BOLD)
         st.configure(name + "TCheckbutton", background=bg, foreground=TEXT, indicatorbackground=FIELD,
@@ -132,7 +181,8 @@ def setup(root):
 
     st.configure("Treeview", background=PANEL, fieldbackground=PANEL, foreground=TEXT, bordercolor=PANEL,
                  lightcolor=PANEL, darkcolor=PANEL, borderwidth=0, font=FONT)
-    st.map("Treeview", background=[("selected", SELECT)], foreground=[("selected", "#ffffff")])
+    st.map("Treeview", background=[("selected", "focus", "#3b5590"), ("selected", SELECT)],
+           foreground=[("selected", "#ffffff")])
     st.layout("Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
     st.configure("Vertical.TScrollbar", background=FIELD, troughcolor=PANEL, bordercolor=PANEL, arrowcolor=MUTED,
                  lightcolor=FIELD, darkcolor=FIELD, gripcount=0, arrowsize=px(12))
@@ -140,6 +190,24 @@ def setup(root):
     st.configure("Card.Vertical.TScrollbar", troughcolor=BG, bordercolor=BG)
     st.configure("TPanedwindow", background=BG)
     st.configure("Sash", sashthickness=px(5), background=BG, lightcolor=BG, bordercolor=BG)
+
+    # Keyboard: the button that has the focus (Tab key) is drawn with an orange border; a mouse click does not give
+    # the focus to a button (no orange border left behind after a click); Enter presses it, like Space.
+    for name in ("TButton", "Accent.TButton", "Small.TButton", "Link.TButton", "Icon.TButton", "Char.TButton",
+                 "Ghost.TButton", "Seg.TButton", "SegOn.TButton", "Tab.TButton", "TabOn.TButton"):
+        st.map(name, relief=[("focus", "solid")],  # (a flat button has no border drawn)
+               **{opt: [("focus", ACCENT)] + [tuple(s) for s in st.map(name, opt)]
+                  for opt in ("bordercolor", "lightcolor", "darkcolor")})
+    st.layout("TButton", [("Button.border", {"sticky": "nswe", "border": "1", "children": [
+        ("Button.padding", {"sticky": "nswe", "children": [("Button.label", {"sticky": "nswe"})]})]})])  # (no dots)
+    press = root.bind_class("TButton", "<ButtonPress-1>")
+    if "ttk::clickToFocus %W;" in press:
+        root.bind_class("TButton", "<ButtonPress-1>", press.replace("ttk::clickToFocus %W;", ""))
+    root.bind_class("TButton", "<Return>", "%W instate !disabled {%W invoke}")
+    # The mouse wheel scrolls the page, never changes the value of a list or a number box under the pointer.
+    for cls in ("TCombobox", "TSpinbox"):
+        for seq in ("<MouseWheel>", "<Shift-MouseWheel>"):
+            root.unbind_class(cls, seq)
     return S
 
 
@@ -214,37 +282,112 @@ class Tooltip:
         self.tip.wm_overrideredirect(True)
         self.tip.configure(bg=BORDER)
         tk.Label(self.tip, text=text, bg="#0d1017", fg=TEXT, font=SMALL, justify="left", padx=px(8), pady=px(5),
-                 wraplength=px(360)).pack(padx=1, pady=1)
+                 wraplength=pz(360)).pack(padx=1, pady=1)
         x = self.widget.winfo_rootx() + px(8)
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + px(4)
         self.tip.wm_geometry(f"+{x}+{y}")
 
 
 class ScrollPage(ttk.Frame):
-    """A page of the notebook that scrolls; put the content in .inner."""
+    """A page that scrolls; put the content in .inner. The window sends it the mouse wheel (scroll), and says when
+    it is the page on screen (shown): a hidden page follows the window's width only when it is shown again (with
+    five pages, resizing the window is five times quicker)."""
 
     def __init__(self, parent):
         super().__init__(parent, style="TFrame")
-        self.canvas = tk.Canvas(self, highlightthickness=0, bg=BG, bd=0)
+        self.canvas = tk.Canvas(self, highlightthickness=0, bg=BG, bd=0, yscrollincrement=1)
         bar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview, style="Card.Vertical.TScrollbar")
         self.inner = ttk.Frame(self.canvas, style="TFrame", padding=(px(14), px(12), px(14), px(16)))
-        self.inner.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.inner.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=(0, 0, e.width, e.height)))
         self.win = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
-        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self.win, width=e.width))
+        self.canvas.bind("<Configure>", self._resized)
         self.canvas.configure(yscrollcommand=bar.set)
         self.canvas.pack(side="left", fill="both", expand=True)
         bar.pack(side="right", fill="y")
-        self.canvas.bind("<Enter>", lambda e: self.canvas.bind_all("<MouseWheel>", self._wheel))
-        self.canvas.bind("<Leave>", lambda e: self.canvas.unbind_all("<MouseWheel>"))
+        self.shown, self.width, self.fitted = True, 0, 0
+        self.wraps = []          # labels whose lines wrap at the page's width (hint, note)
+        self.target, self.job = None, None
 
-    def _wheel(self, e):
-        if self.canvas.yview() != (0.0, 1.0):
-            self.canvas.yview_scroll(int(-e.delta / 120) * 3, "units")
+    # -- width
+    def _resized(self, e):
+        self.width = e.width
+        if self.shown:
+            self.fit()
+
+    def fit(self, force=False):
+        """The content takes the page's width; the texts wrap at it."""
+        if not self.width or (self.width == self.fitted and not force):
+            return
+        self.fitted = self.width
+        self.canvas.itemconfigure(self.win, width=self.width)
+        for lab in self.wraps:
+            rewrap(lab, self.width)
+
+    # -- the mouse wheel: a smooth glide of a few pixels at a time to the place asked for
+    def scroll(self, pixels):
+        total = self.inner.winfo_height()
+        view = self.canvas.winfo_height()
+        if total <= view:
+            return
+        start = self.canvas.canvasy(0) if self.target is None else self.target
+        self.target = max(0, min(total - view, start + pixels))
+        if self.job is None:
+            self._glide()
+
+    def _glide(self):
+        total = max(1, self.inner.winfo_height())
+        now = self.canvas.canvasy(0)
+        gap = self.target - now
+        if abs(gap) < 2:
+            self.canvas.yview_moveto(self.target / total)
+            self.target = self.job = None
+            return
+        step = gap * 0.5 if abs(gap) > 6 else gap
+        self.canvas.yview_moveto((now + step) / total)
+        self.job = self.after(12, self._glide)
+
+    def top(self):
+        if self.job:
+            self.after_cancel(self.job)
+        self.target = self.job = None
+        self.canvas.yview_moveto(0)
 
     def clear(self):
         for w in self.inner.winfo_children():
             w.destroy()
-        self.canvas.yview_moveto(0)
+        self.wraps = []
+        self.top()
+
+
+def page_of(widget):
+    while widget is not None and not isinstance(widget, ScrollPage):
+        widget = widget.master
+    return widget
+
+
+def rewrap(lab, page_width):
+    """A text of a page wraps at its width (at most lab.wrap, which follows the text size); a note keeps the lines
+    its longest text needs."""
+    lab.wrapw = max(px(220), min(pz(lab.wrap), page_width - px(76)))
+    lab.configure(wraplength=lab.wrapw)
+    if getattr(lab, "lines", None):
+        set_note(lab, lab.cget("text"), fit=True)
+
+
+def set_note(lab, text, fit=False):
+    """Text of a note: its height grows to what its text needs (never shrinks: the page under it does not move from
+    one character to another)."""
+    if not fit and text == lab.cget("text"):
+        return
+    if not fit:
+        lab.configure(text=text)
+    need = text_lines(lab.font, text, getattr(lab, "wrapw", pz(lab.wrap))) if text else 0
+    if fit:
+        lab.lines = max(lab.base_lines, need)
+        lab.configure(height=lab.lines)
+    elif need > lab.lines:
+        lab.lines = need
+        lab.configure(height=need)
 
 
 def card(parent, title=None, subtitle=None, accent=False):
@@ -266,18 +409,34 @@ def card(parent, title=None, subtitle=None, accent=False):
     return body
 
 
-def hint(parent, text, wrap=640, pady=(0, 6)):
-    lab = ttk.Label(parent, text=text, style="Card.Muted.TLabel", justify="left", wraplength=px(wrap))
+def _wrapping(lab, wrap):
+    """The label wraps at its page's width (see rewrap)."""
+    lab.wrap = wrap
+    page = page_of(lab.master)
+    if page is not None:
+        page.wraps.append(lab)
+        if page.fitted:
+            rewrap(lab, page.fitted)
+            return lab
+    lab.wrapw = pz(wrap)
+    lab.configure(wraplength=lab.wrapw)
+    return lab
+
+
+def hint(parent, text, wrap=760, pady=(0, 6)):
+    """An explanation in a card (the size of the text of the values: easy to read)."""
+    lab = ttk.Label(parent, text=text, style="Card.Hint.TLabel", justify="left")
     lab.pack(anchor="w", pady=(px(pady[0]), px(pady[1])))
-    return lab
+    return _wrapping(lab, wrap)
 
 
-def note(parent, lines, wrap=640):
-    """A muted text of a fixed number of lines: a text that changes does not move the page around it."""
-    lab = tk.Label(parent, text="", bg=CARD, fg=MUTED, font=SMALL, justify="left", anchor="nw", height=lines,
-                   wraplength=px(wrap))
+def note(parent, lines, wrap=760):
+    """An explanation whose text changes with the character (set_note): its height only grows, so a text that
+    changes does not move the page around it."""
+    lab = tk.Label(parent, text="", bg=CARD, fg=MUTED, font=FONT, justify="left", anchor="nw", height=lines)
+    lab.font, lab.lines, lab.base_lines = FONT, lines, lines
     lab.pack(anchor="w", fill="x", pady=(0, px(6)))
-    return lab
+    return _wrapping(lab, wrap)
 
 
 def ball_png(size):
@@ -425,7 +584,7 @@ class Picker(tk.Toplevel):
         if current is not None and current >= 0:
             self.list.select(current)
         self.bind("<Escape>", lambda e: self.destroy())
-        w, h = px(420), px(560)
+        w, h = pz(440), pz(580)
         x = master.winfo_rootx() + (master.winfo_width() - w) // 2
         y = master.winfo_rooty() + (master.winfo_height() - h) // 3
         self.geometry(f"{w}x{h}+{max(0, x)}+{max(0, y)}")
@@ -473,10 +632,10 @@ class ShareDialog(tk.Toplevel):
         pad = dict(padx=px(16))
         ttk.Label(self, text="Ton pack en code", style="Panel.Title.TLabel").pack(anchor="w", pady=(px(14), 0), **pad)
         ttk.Label(self, text="Copie ce code et colle-le dans un message (Discord…) : tes amis le chargent ici, "
-                             "dans « Charger le pack d'un ami ».", style="Panel.Muted.TLabel", wraplength=px(560),
+                             "dans « Charger le pack d'un ami ».", style="Panel.Muted.TLabel", wraplength=pz(560),
                   justify="left").pack(anchor="w", **pad)
         self.code = tk.Text(self, height=5, wrap="char", bg=FIELD, fg=TEXT, insertbackground=TEXT, relief="flat",
-                            font=("Consolas", 9), highlightthickness=1, highlightbackground=BORDER,
+                            font=MONO, highlightthickness=1, highlightbackground=BORDER,
                             highlightcolor=ACCENT)
         self.code.insert("1.0", code)
         self.code.configure(state="disabled")
@@ -496,17 +655,17 @@ class ShareDialog(tk.Toplevel):
         ttk.Label(self, text="Colle son code ci-dessous. Le pack ouvert ici sera remplacé par le sien.",
                   style="Panel.Muted.TLabel").pack(anchor="w", **pad)
         self.paste = tk.Text(self, height=5, wrap="char", bg=FIELD, fg=TEXT, insertbackground=TEXT, relief="flat",
-                             font=("Consolas", 9), highlightthickness=1, highlightbackground=BORDER,
+                             font=MONO, highlightthickness=1, highlightbackground=BORDER,
                              highlightcolor=ACCENT)
         self.paste.pack(fill="x", pady=(px(8), px(6)), **pad)
         row = ttk.Frame(self, style="Panel.TFrame")
         row.pack(fill="x", pady=(0, px(16)), **pad)
         ttk.Button(row, text="Charger ce pack", command=self._load).pack(side="left")
         ttk.Button(row, text="Fermer", command=self.destroy).pack(side="right")
-        self.error = ttk.Label(self, text="", style="Warn.Panel.TLabel", wraplength=px(560), justify="left")
+        self.error = ttk.Label(self, text="", style="Warn.Panel.TLabel", wraplength=pz(560), justify="left")
         self.error.pack(anchor="w", pady=(0, px(12)), **pad)
         self.bind("<Escape>", lambda e: self.destroy())
-        w = px(600)
+        w = pz(600)
         self.update_idletasks()
         x = master.winfo_rootx() + (master.winfo_width() - w) // 2
         y = master.winfo_rooty() + px(120)
@@ -528,6 +687,38 @@ class ShareDialog(tk.Toplevel):
             self.error.configure(text=problem)
         else:
             self.destroy()
+
+
+class InfoDialog(tk.Toplevel):
+    """A small window with a table of two columns (the keyboard shortcuts)."""
+    HIDDEN = False
+
+    def __init__(self, master, title, rows):
+        super().__init__(master)
+        self.withdraw()
+        self.title(title)
+        self.configure(bg=PANEL)
+        self.transient(master)
+        box = ttk.Frame(self, style="Panel.TFrame", padding=(px(18), px(14), px(18), px(14)))
+        box.pack(fill="both", expand=True)
+        ttk.Label(box, text=title, style="Panel.Title.TLabel").grid(row=0, column=0, columnspan=2, sticky="w",
+                                                                   pady=(0, px(10)))
+        for i, (keys, what) in enumerate(rows, 1):
+            ttk.Label(box, text=keys, style="Panel.Accent.TLabel").grid(row=i, column=0, sticky="w",
+                                                                      padx=(0, px(18)), pady=px(3))
+            ttk.Label(box, text=what, style="Panel.TLabel").grid(row=i, column=1, sticky="w", pady=px(3))
+        close = ttk.Button(box, text="Fermer", command=self.destroy)
+        close.grid(row=len(rows) + 1, column=1, sticky="e", pady=(px(14), 0))
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.update_idletasks()
+        w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+        x = master.winfo_rootx() + (master.winfo_width() - w) // 2
+        y = master.winfo_rooty() + (master.winfo_height() - h) // 3
+        self.geometry(f"+{max(0, x)}+{max(0, y)}")
+        self.attributes("-alpha", 0.0)
+        self.deiconify()
+        self.after(20, lambda: dark_title(self, show=not self.HIDDEN))
+        close.focus_set()
 
 
 def pick(master, title, names, icons, **kw):

@@ -47,6 +47,14 @@ jeu : ils ne partent pas avec l'outil quand tu le donnes à un ami).
   ki**.
 - Pour choisir un personnage (remplacement, attaque reprise, transformation, forme), une petite fenêtre s'ouvre avec
   la recherche et les portraits : double-clic pour choisir.
+- **Taille du texte** (en bas à droite, **A−** / **A+**, ou Ctrl + molette) : de 90 % à 160 %, retenue pour la
+  prochaine fois. Quand la fenêtre est trop étroite (texte agrandi, petit écran), la grande illustration se replie
+  pour laisser la place aux réglages ; elle revient quand on élargit la fenêtre.
+- **Au clavier** : **F1** montre tous les raccourcis. Ctrl+F pour chercher, Ctrl+↑ / Ctrl+↓ pour passer d'un
+  personnage à l'autre, Ctrl+1 à Ctrl+5 pour les onglets ; Tab passe d'un bouton à l'autre (le bouton choisi a une
+  bordure orange) et Espace ou Entrée le presse.
+- La molette fait défiler la page même au-dessus d'une liste ou d'un nombre : elle ne change jamais une valeur sans
+  le vouloir.
 
 ## Appliquer, partager, revenir en arrière
 
@@ -56,7 +64,7 @@ jeu : ils ne partent pas avec l'outil quand tu le donnes à un ami).
   jeu ; **✓ Appliqué** que le jeu utilise ce pack tel qu'il est.
 - La première fois qu'un pack change un nom ou une case des menus, l'outil analyse les menus du jeu (environ
   1 min 30, une seule fois) ; ensuite c'est quasi instantané.
-- **Retirer les mods du jeu** supprime tout ce que l'outil a écrit : le jeu redevient l'original.
+- **Retirer du jeu** supprime tout ce que l'outil a écrit : le jeu redevient l'original.
 - **Partager…** donne ton pack sous forme de **code** (un texte qui commence par `BT3-1-`, quelques centaines de
   caractères) : copie-le dans un message, tes amis le collent dans **Partager… → Charger le pack d'un ami**, puis
   **Appliquer au jeu**. Le code contient tout le pack, sans serveur, et aucune donnée du jeu.

@@ -79,6 +79,32 @@ def main():
     ch["menuName"] = "Prince Vegeta"  # (the entry's own handler is checked below with a real keystroke path)
     pump(app)
 
+    # the mouse wheel over the list of the grafted attack: the page glides down, the attack chosen stays
+    app.show_tab("Attaques")
+    pump(app, 10)
+    combo = next(c for c in app.atk_cards if c["kind"] == "super" and c["slot"] == 2)["combo"]
+    chosen, page = combo.get(), app.pages["Attaques"]
+    page.top()
+    pump(app, 5)
+    for _ in range(3):
+        combo.event_generate("<MouseWheel>", delta=-120)
+    pump(app, 40)
+    moved = page.canvas.canvasy(0)
+    check("the wheel scrolls the page, not a list's value", moved > 100 and combo.get() == chosen,
+          f"page moved {moved:.0f} px, list {combo.get()!r}")
+    # the keyboard: Ctrl+↓ the next character of the list, Ctrl+3 the Stats tab, Ctrl+↑ back
+    tree = app.list.tree
+    tree.event_generate("<Control-Down>")
+    tree.event_generate("<Control-Key-3>")
+    pump(app)
+    went = (app.chara, app.current)
+    tree.event_generate("<Control-Up>")
+    pump(app)
+    check("keyboard shortcuts (Ctrl+↓, Ctrl+3, Ctrl+↑)", went == (153, "Stats") and app.chara == 152,
+          f"{went} then {app.chara}")
+    app.show_tab("Personnage")
+    pump(app)
+
     expect = {"base": 31, "transplants": [{"slot": 2, "from": 33, "fromSlot": 0},
                                           {"kind": "skill", "slot": 1, "from": 0, "fromSlot": 0}],
               "fields": {"roster.health": 60000, "roster.kiStart": 100000, "param.blastGain": 1000000,

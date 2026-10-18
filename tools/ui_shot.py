@@ -1,7 +1,7 @@
 """Screenshots of the tool's own window, to check the interface without a person at the screen.
     py -I tools/ui_shot.py OUT_DIR STEP ...
 Steps: select:N  tab:NAME  set:KEY=VALUE  base:N  menu:N=TEXT  graft:SLOT=FROM/FROMSLOT  skill:SLOT=FROM/FROMSLOT  search:TEXT
-       scroll:FRACTION  picker  shot:NAME  wait:MS  size:WxH
+       scroll:FRACTION  picker  share  help  zoom:SCALE  focus:TAB  shot:NAME  wait:MS  size:WxH
 The window is fully transparent (PrintWindow still gets its picture), so nothing shows on the desktop."""
 import ctypes
 import os
@@ -122,6 +122,20 @@ def main(out, steps):
                 time.sleep(0.02)
             capture(int(p.wm_frame(), 16), os.path.join(out, "picker.png"))
             p.destroy()
+        elif cmd == "zoom":
+            app.set_zoom(float(arg), save=False)  # (the person's own setting is left as it is)
+        elif cmd == "focus":  # the keyboard's focus on a tab button (its orange border)
+            app.tab_buttons[arg].focus_set()
+            app.tab_buttons[arg].state(["focus"])  # (an invisible window never has the focus itself)
+        elif cmd == "help":
+            ui.InfoDialog.HIDDEN = True
+            app.show_help()
+            d = [w for w in app.winfo_children() if isinstance(w, ui.InfoDialog)][-1]
+            for _ in range(10):
+                app.update()
+                time.sleep(0.02)
+            capture(int(d.wm_frame(), 16), os.path.join(out, "help.png"))
+            d.destroy()
         elif cmd == "share":
             ui.ShareDialog.HIDDEN = True
             app.share_pack()

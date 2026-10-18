@@ -21,6 +21,7 @@ SPECIALS = [("Blast 1 n°1", "skill", 0, 0), ("Blast 1 n°2", "skill", 1, 1), ("
 KIBLAST_COLS = [("damage", "Dégâts"), ("guardDamage", "Si gardé"), ("ki", "Coût en ki"), ("speed", "Vitesse"),
                 ("turn", "Guidage"), ("time", "Durée"), ("hits", "Coups")]
 PAGES = ["Personnage", "Attaques", "Stats", "Rafales de ki", "Déplacements"]
+MAIN_WIDTH = 680  # the width the pages need (1/96 inch at the normal text size): narrower, the large picture goes
 
 
 def fmt(f, v):
@@ -49,14 +50,17 @@ def meaning(f, v):
 class FieldRow:
     """A value of the character: a box, what the value means, its original value and a button to put it back."""
 
-    def __init__(self, app, parent, f, label=None, compact=False):
+    def __init__(self, app, parent, f, label=None, compact=False, short=False):
         self.app, self.f, self.compact = app, f, compact
         self.var = tk.StringVar()
         self.label = None if compact else ttk.Label(parent, text=label or f.label, style="Card.TLabel")
         self.ent = ui.entry(parent, self.var, width=7 if compact else 11, justify="right")
         # (fixed sizes: a value that changes never moves the page's layout, which is what makes Tk slow)
-        self.info = None if compact else ttk.Label(parent, text="", style="Card.Muted.TLabel", width=32)
-        self.reset = None if compact else ttk.Button(parent, text="", style="Link.TButton", width=11,
+        # (short: two rows side by side; the button is then only an arrow, explained by its tooltip)
+        self.info = None if compact else ttk.Label(parent, text="", style="Card.Muted.TLabel",
+                                                   width=14 if short else 28)
+        self.reset_text = "↺" if short else "↺ remettre"
+        self.reset = None if compact else ttk.Button(parent, text="", style="Link.TButton", width=3 if short else 11,
                                                      command=self.revert)
         self.page = app.building
         if self.reset:
@@ -74,7 +78,7 @@ class FieldRow:
         self.label.grid(row=row, column=c, sticky="w", padx=(0, px(10)), pady=px(3))
         self.ent.grid(row=row, column=c + 1, sticky="w", pady=px(3))
         self.info.grid(row=row, column=c + 2, sticky="w", padx=(px(8), 0))
-        self.reset.grid(row=row, column=c + 3, sticky="w", padx=(px(2), px(22)))
+        self.reset.grid(row=row, column=c + 3, sticky="w", padx=(px(2), px(16)))
 
     def tip(self):
         o = self.app.orig.get(self.f.key)
@@ -86,26 +90,34 @@ class FieldRow:
         return text
 
     def show(self, value):
-        self.var.set(fmt(self.f, value))
+        text = fmt(self.f, value)
+        if self.var.get() != text:
+            self.var.set(text)
         self.paint(value)
 
     def changed(self):
         return self.f.key in self.app.chara_fields()
 
+    def _set(self, widget, **kw):
+        """configure, only when something changes: Tk draws a widget again at each configure, even the same."""
+        if getattr(widget, "last", None) != kw:
+            widget.configure(**kw)
+            widget.last = kw
+
     def paint(self, value=None, bad=False):
         changed = self.changed()
         if bad:
-            self.ent.configure(bg=ui.BAD_BG, fg=ui.TEXT)
+            self._set(self.ent, bg=ui.BAD_BG, fg=ui.TEXT)
         else:
-            self.ent.configure(bg=ui.MOD_BG if changed else ui.FIELD, fg=ui.MOD_TEXT if changed else ui.TEXT)
+            self._set(self.ent, bg=ui.MOD_BG if changed else ui.FIELD, fg=ui.MOD_TEXT if changed else ui.TEXT)
         if self.compact:
             return
         o = self.app.orig.get(self.f.key)
         text = meaning(self.f, value) if value is not None and not bad else ""
         if changed and o is not None:
             text += ("   " if text else "") + f"origine {fmt(self.f, o)}"
-        self.info.configure(text=text)
-        self.reset.configure(text="↺ remettre" if changed else "")
+        self._set(self.info, text=text)
+        self._set(self.reset, text=self.reset_text if changed else "", takefocus=changed)
 
     def revert(self):
         o = self.app.orig.get(self.f.key)
@@ -119,6 +131,7 @@ class CharButton:
     def __init__(self, app, parent, none_text, command, width=36):
         self.app, self.none_text, self.command, self.active = app, none_text, command, True
         self.b = ttk.Button(parent, style="Char.TButton", width=width, command=self._click, compound="left")
+        self.last = None
         self.set(None)
 
     def _click(self):
@@ -132,10 +145,13 @@ class CharButton:
             self.none_text = none_text
         self.active = active
         img = self.app.small_icon(c) if c is not None else None
-        self.b.configure(text="  " + (self.app.target_text(c) if c is not None else self.none_text),
-                         image=img if img is not None else self.app.blank,
-                         style="Ghost.TButton" if ghost else "Char.TButton",
-                         cursor="hand2" if active and self.command else "")
+        look = dict(text="  " + (self.app.target_text(c) if c is not None else self.none_text),
+                    image=img if img is not None else self.app.blank,
+                    style="Ghost.TButton" if ghost else "Char.TButton",
+                    cursor="hand2" if active and self.command else "", takefocus=bool(active and self.command))
+        if look != self.last:  # (Tk draws a widget again at each configure: only when something changes)
+            self.b.configure(**look)
+            self.last = look
 
 
 class Studio(tk.Tk):
@@ -144,7 +160,8 @@ class Studio(tk.Tk):
     def __init__(self, gamedata):
         super().__init__()
         self.attributes("-alpha", 0.0)  # (shown once ready, with its dark title bar: _show)
-        ui.setup(self)
+        zoom = appcache.settings().get("textZoom", 1.0)
+        ui.setup(self, zoom if zoom in ui.ZOOMS else 1.0)
         self.title(TITLE)
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         w, h = min(px(1360), sw - px(40)), min(px(880), sh - px(90))
@@ -165,6 +182,7 @@ class Studio(tk.Tk):
         self.faces = {}          # (character id, width) -> PhotoImage of its large picture
         self.face_png = {}       # the same as PNG, made ahead by a thread (_prefetch)
         self.prefetching = False
+        self.warm_job = None
         self.built = set()       # pages made (once: then only their contents change)
         self.stale = set()       # pages made that do not show the selected character yet (filled when shown)
         self.building = None     # the page being made (FieldRow.page)
@@ -180,21 +198,19 @@ class Studio(tk.Tk):
             pass
 
         self._build_top()
-        self.status = tk.StringVar(value=f"Données du jeu : {gamedata}")
-        bar = ttk.Frame(self, style="Panel.TFrame", padding=(px(12), px(4)))
-        bar.pack(fill="x", side="bottom")
-        ttk.Label(bar, textvariable=self.status, style="Panel.Muted.TLabel").pack(side="left")
+        self._build_status(gamedata)
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True)
         self._build_side(body)
         self._build_portrait(body)
         self._build_editor(body)
+        self._sizes()
         self.saved = self._snapshot()  # the pack as it was last saved or opened
         self.refresh_list()
         self.select(0)
-        self.bind_all("<Control-s>", lambda e: self.save_pack())
-        self.bind_all("<Control-o>", lambda e: self.open_pack())
-        self.bind_all("<F5>", lambda e: self.apply())
+        self._bind_keys()
+        self.resize_job = None
+        self.bind("<Configure>", self._on_resize)
         self.protocol("WM_DELETE_WINDOW", self.quit_app)
         self.pack_name.trace_add("write", lambda *a: self._dirty())
         self.after(10, self._show)
@@ -211,43 +227,105 @@ class Studio(tk.Tk):
         for name in PAGES:
             if name not in self.built:
                 self._build_page(name)
+                self.pages[name].fit()
                 self.after(60, self._build_all)
+                return
+        self._fit_window()  # (all made: the widest page has its room)
+        self._fit_hidden()
+
+    def _fit_hidden(self):
+        """The hidden pages take the window's new width one at a time while nothing happens (not all at once while
+        the window is being resized, nor when a tab is opened)."""
+        for p in self.pages.values():
+            if p.width and p.width != p.fitted:
+                p.fit()
+                self.after(40, self._fit_hidden)
                 return
 
     # ---- the window --------------------------------------------------------------------------------------------
     def _build_top(self):
-        top = ttk.Frame(self, style="Panel.TFrame", padding=(px(14), px(10), px(14), px(10)))
+        """The bar at the top, in a grid: when the window is narrow, the two text boxes get narrower (a button never
+        loses the end of its text)."""
+        top = ttk.Frame(self, style="Panel.TFrame", padding=(px(14), px(9), px(14), px(9)))
         top.pack(fill="x")
         tk.Frame(self, bg=ui.ACCENT, height=px(2)).pack(fill="x")
         self.logo = tk.PhotoImage(data=ui.ball_png(px(30)))
-        ttk.Label(top, image=self.logo, style="Panel.TLabel").pack(side="left")
-        ttk.Label(top, text=TITLE, style="AppTitle.Panel.TLabel").pack(side="left", padx=(px(8), px(26)))
-        ttk.Label(top, text="Pack", style="Panel.Muted.TLabel").pack(side="left")
+        # (the game's buttons first: on a narrow window, they keep their place and the left part gets narrower)
+        right = ttk.Frame(top, style="Panel.TFrame")
+        right.pack(side="right")
+        left = self.top_left = ttk.Frame(top, style="Panel.TFrame")
+        left.pack(side="left", fill="x", expand=True)
+        col = 0
+
+        def put(w, padx=(0, 0), weight=0, tip=None):
+            nonlocal col
+            w.grid(row=0, column=col, padx=padx, sticky="ew" if weight else "")
+            left.columnconfigure(col, weight=weight, minsize=px(70) if weight == 1 else 0)
+            col += 1
+            if tip:
+                ui.Tooltip(w, tip)
+            return w
+        put(ttk.Label(left, image=self.logo, style="Panel.TLabel"))
+        self.app_title = put(ttk.Label(left, text=TITLE, style="AppTitle.Panel.TLabel"), (px(8), px(22)))
+        put(ttk.Label(left, text="Pack", style="Panel.Muted.TLabel"))
         self.pack_name = tk.StringVar(value=self.pack["name"])
-        ttk.Entry(top, textvariable=self.pack_name, width=22).pack(side="left", padx=(px(6), px(10)))
-        ttk.Label(top, text="par", style="Panel.Muted.TLabel").pack(side="left")
+        self.top_entries = [put(ttk.Entry(left, textvariable=self.pack_name, width=22), (px(6), px(8)), weight=1,
+                                tip="Le nom du pack (il apparaît aussi chez tes amis)")]
+        put(ttk.Label(left, text="par", style="Panel.Muted.TLabel"))
         self.pack_author = tk.StringVar()
-        ttk.Entry(top, textvariable=self.pack_author, width=14).pack(side="left", padx=(px(6), px(14)))
-        for text, cmd in (("Nouveau", self.new_pack), ("Ouvrir…", self.open_pack), ("Enregistrer…", self.save_pack),
-                          ("Partager…", self.share_pack)):
-            ttk.Button(top, text=text, command=cmd).pack(side="left", padx=(0, px(6)))
-        ttk.Button(top, text="▶  Appliquer au jeu", style="Accent.TButton", command=self.apply).pack(side="right")
-        ttk.Button(top, text="Retirer les mods du jeu", command=self.remove_mods).pack(side="right", padx=px(8))
-        self.state_lbl = ttk.Label(top, text="", style="Panel.Muted.TLabel")
-        self.state_lbl.pack(side="right", padx=px(10))
-        ui.Tooltip(self.state_lbl, lambda: "Le jeu utilise ce pack tel qu'il est." if "✓" in
-                   self.state_lbl.cget("text") else "Des changements de ce pack ne sont pas encore dans le jeu : "
-                                                    "clique sur « Appliquer au jeu ».")
+        self.top_entries.append(put(ttk.Entry(left, textvariable=self.pack_author, width=14), (px(6), px(14)),
+                                    weight=1, tip="Ton pseudo"))
+        for text, cmd, tip in (
+                ("Nouveau", self.new_pack, "Commencer un pack vide (Ctrl+N)"),
+                ("Ouvrir…", self.open_pack, "Ouvrir un pack enregistré, un fichier .bt3mod.json (Ctrl+O)"),
+                ("Enregistrer…", self.save_pack, "Enregistrer le pack dans un fichier (Ctrl+S)"),
+                ("Partager…", self.share_pack, "Le pack en code à envoyer à tes amis, ou charger le code d'un ami")):
+            put(ttk.Button(left, text=text, command=cmd), (0, px(6)), tip=tip)
+        put(ttk.Frame(left, style="Panel.TFrame"), weight=100)  # (the room left over goes here)
+        # (a fixed width: "● Non appliqué" and "✓ Appliqué" do not move the buttons)
+        self.state_lbl = ttk.Label(right, text="", style="Panel.Muted.TLabel", width=15, anchor="e")
+        self.state_lbl.pack(side="left", padx=(0, px(10)))
+        ui.Tooltip(self.state_lbl, lambda: "Le jeu utilise ce pack tel qu'il est." if "✓" in self.state_lbl.cget(
+            "text") else "Des changements de ce pack ne sont pas encore dans le jeu : clique sur « Appliquer au jeu ».")
+        b = ttk.Button(right, text="Retirer du jeu", command=self.remove_mods)
+        b.pack(side="left", padx=(0, px(8)))
+        ui.Tooltip(b, "Retirer du jeu tous les fichiers écrits par l'outil : le jeu redevient l'original. Ton pack "
+                      "reste ouvert ici.")
+        b = ttk.Button(right, text="▶  Appliquer au jeu", style="Accent.TButton", command=self.apply)
+        b.pack(side="left")
+        ui.Tooltip(b, "Écrire le pack dans le jeu (F5). Ferme le jeu avant, relance-le après.")
+
+    def _build_status(self, gamedata):
+        """The bar at the bottom: what just happened, the text size, the keyboard shortcuts."""
+        self.status = tk.StringVar(value=f"Données du jeu : {gamedata}")
+        bar = ttk.Frame(self, style="Panel.TFrame", padding=(px(12), px(3), px(8), px(3)))
+        bar.pack(fill="x", side="bottom")
+        ttk.Button(bar, text="Raccourcis clavier (F1)", style="Seg.TButton", command=self.show_help).pack(side="right")
+        zoom = ttk.Frame(bar, style="Panel.TFrame")
+        zoom.pack(side="right", padx=(0, px(16)))
+        ttk.Label(zoom, text="Taille du texte", style="Panel.Muted.TLabel").pack(side="left", padx=(0, px(6)))
+        b = ttk.Button(zoom, text="A−", style="Seg.TButton", width=3, command=lambda: self.zoom_step(-1))
+        b.pack(side="left")
+        ui.Tooltip(b, "Texte plus petit (Ctrl + molette, Ctrl+−)")
+        self.zoom_lbl = ttk.Label(zoom, text="", style="Panel.Muted.TLabel", width=6, anchor="center")
+        self.zoom_lbl.pack(side="left")
+        b = ttk.Button(zoom, text="A+", style="Seg.TButton", width=3, command=lambda: self.zoom_step(1))
+        b.pack(side="left")
+        ui.Tooltip(b, "Texte plus grand (Ctrl + molette, Ctrl++ ; Ctrl+0 : taille normale)")
+        ttk.Label(bar, textvariable=self.status, style="Panel.Muted.TLabel").pack(side="left", fill="x", expand=True)
 
     def _build_side(self, parent):
-        side = ttk.Frame(parent, style="Panel.TFrame", padding=(px(12), px(12), px(6), px(8)), width=px(330))
+        self.side = side = ttk.Frame(parent, style="Panel.TFrame", padding=(px(12), px(12), px(6), px(8)))
         side.pack(side="left", fill="y")
         side.pack_propagate(False)
         ttk.Label(side, text="Personnages", style="Panel.Title.TLabel").pack(anchor="w")
         ttk.Label(side, text="Recherche par nom, attaque ou numéro", style="Panel.Muted.TLabel").pack(anchor="w")
         self.search = tk.StringVar()
         self.search.trace_add("write", lambda *a: self.refresh_list())
-        ttk.Entry(side, textvariable=self.search, style="Search.TEntry").pack(fill="x", pady=(px(6), px(8)))
+        self.search_entry = ttk.Entry(side, textvariable=self.search, style="Search.TEntry")
+        self.search_entry.pack(fill="x", pady=(px(6), px(8)))
+        self.search_entry.bind("<Down>", lambda e: self._into_list())
+        ui.Tooltip(self.search_entry, "Ctrl+F ; ↓ pour descendre dans la liste")
         seg = ttk.Frame(side, style="Panel.TFrame")
         seg.pack(fill="x", pady=(0, px(8)))
         self.only_mod = False
@@ -259,7 +337,14 @@ class Studio(tk.Tk):
         self.count_lbl.pack(side="right", padx=px(4))
         self.list = ui.CharList(side, self.names, self.icons, on_select=self._on_list)
         self.list.pack(fill="both", expand=True)
-        ttk.Style(self).configure("Treeview", rowheight=self.icon_size + px(8))
+
+    def _sizes(self):
+        """The sizes that follow the text size: the side bar, the rows of the lists, the window's width."""
+        import tkinter.font as tkfont
+        self.side.configure(width=ui.pz(330))
+        line = tkfont.Font(name=ui.FONT, exists=True).metrics("linespace")
+        ttk.Style(self).configure("Treeview", rowheight=max(self.icon_size, line) + px(8))
+        self.zoom_lbl.configure(text=f"{round(ui.Z * 100)} %")
 
     def _build_portrait(self, parent):
         # The game draws its pictures in a frame of their own width (most are cut on both sides and at the bottom):
@@ -267,12 +352,23 @@ class Studio(tk.Tk):
         self.card_w = px(280)
         self.portrait = tk.Canvas(parent, width=self.card_w, highlightthickness=0, bd=0, bg=ui.SKY_BOTTOM)
         self.portrait.pack(side="right", fill="y")
-        self.portrait.bind("<Configure>", lambda e: self._draw_portrait())
+        self.portrait_shown = True
+        self.portrait_h, self.portrait_job, self.portrait_drawn = 0, None, None
+        self.portrait.bind("<Configure>", self._portrait_resized)
+
+    def _portrait_resized(self, e):
+        """Drawn again when the window's height changes, once the window stops moving (not at each pixel)."""
+        if e.height == self.portrait_h:
+            return
+        self.portrait_h = e.height
+        if self.portrait_job:
+            self.after_cancel(self.portrait_job)
+        self.portrait_job = self.after(40, self._draw_portrait)
 
     def _build_editor(self, parent):
-        main = ttk.Frame(parent)
+        main = self.main = ttk.Frame(parent)
         main.pack(side="left", fill="both", expand=True)
-        head = ttk.Frame(main, padding=(px(20), px(14), px(16), px(6)))
+        head = self.head = ttk.Frame(main, padding=(px(20), px(14), px(16), px(6)))
         head.pack(fill="x")
         head.columnconfigure(0, weight=1)
         self.title_var = tk.StringVar()
@@ -290,11 +386,13 @@ class Studio(tk.Tk):
         self.badge_num = ttk.Label(badges, style="BadgeBlue.TLabel")
         self.badge_rep = ttk.Label(badges, style="Badge.TLabel")
         self.badge_mod = ttk.Label(badges, text="Modifié dans ce pack", style="Badge.TLabel")
+        self.badge_num.pack(side="left", padx=(0, px(6)))
+        self.badges = (False, False)
         self.facts = ttk.Label(head, text="", style="Muted.TLabel")
         self.facts.grid(row=2, column=0, columnspan=2, sticky="w")
         # Tabs: a bar of buttons over pages stacked in one place, all of them shown; a tab brings its page to the
         # front (a Notebook hides and shows hundreds of little windows at each change: slow on Windows).
-        bar = ttk.Frame(main)
+        bar = self.tabbar = ttk.Frame(main)
         bar.pack(fill="x", padx=(px(10), 0))
         stack = ttk.Frame(main)
         stack.pack(fill="both", expand=True, padx=(px(10), 0))
@@ -313,8 +411,163 @@ class Studio(tk.Tk):
         self.current = name
         for n, b in self.tab_buttons.items():
             b.configure(style="TabOn.TButton" if n == name else "Tab.TButton")
+        for n, p in self.pages.items():
+            p.shown = n == name
         self._build_page(name)
+        self.pages[name].fit()
         self.pages[name].tkraise()
+
+    def step_tab(self, d):
+        self.show_tab(PAGES[(PAGES.index(self.current) + d) % len(PAGES)])
+
+    # ---- keyboard, mouse wheel, text size -----------------------------------------------------------------------
+    SHORTCUTS = [("Ctrl+F", "chercher un personnage"),
+                 ("Ctrl+↑  /  Ctrl+↓", "personnage précédent / suivant de la liste"),
+                 ("Ctrl+1 … Ctrl+5", "onglet Personnage, Attaques, Stats, Rafales de ki, Déplacements"),
+                 ("Ctrl+Tab", "onglet suivant (Ctrl+Maj+Tab : précédent)"),
+                 ("Tab  /  Maj+Tab", "passer d'un bouton ou d'une case à l'autre (bordure orange)"),
+                 ("Espace  ou  Entrée", "cliquer sur le bouton à bordure orange"),
+                 ("Clic droit sur une valeur", "remettre sa valeur d'origine"),
+                 ("Ctrl+N  /  Ctrl+O  /  Ctrl+S", "nouveau pack / ouvrir / enregistrer"),
+                 ("F5", "appliquer le pack au jeu"),
+                 ("Ctrl + molette,  Ctrl++  /  Ctrl+−", "taille du texte (Ctrl+0 : normale)"),
+                 ("Échap", "fermer une petite fenêtre (choix d'un personnage, partage)")]
+
+    def _bind_keys(self):
+        def key(action):
+            def run(e):
+                if e.widget.winfo_toplevel() is not self:  # (a small window is open: the keys are its own)
+                    return None
+                action()
+                return "break"
+            return run
+        keys = {"<Control-s>": self.save_pack, "<Control-o>": self.open_pack, "<Control-n>": self.new_pack,
+                "<F5>": self.apply, "<F1>": self.show_help, "<Control-f>": self.focus_search,
+                "<Control-Up>": lambda: self.step_chara(-1), "<Control-Down>": lambda: self.step_chara(1),
+                "<Control-Tab>": lambda: self.step_tab(1), "<Control-Shift-Tab>": lambda: self.step_tab(-1),
+                "<Control-plus>": lambda: self.zoom_step(1), "<Control-equal>": lambda: self.zoom_step(1),
+                "<Control-KP_Add>": lambda: self.zoom_step(1), "<Control-minus>": lambda: self.zoom_step(-1),
+                "<Control-KP_Subtract>": lambda: self.zoom_step(-1), "<Control-Key-0>": lambda: self.set_zoom(1.0)}
+        keys["<Control-agrave>"] = keys["<Control-KP_0>"] = keys["<Control-Key-0>"]
+        # (the keys 1 to 5 above the letters: on a French keyboard they give & é " ' ( without Shift)
+        azerty = ["ampersand", "eacute", "quotedbl", "apostrophe", "parenleft"]
+        for i, name in enumerate(PAGES):
+            for k in (f"Key-{i + 1}", azerty[i], f"KP_{i + 1}"):
+                keys[f"<Control-{k}>"] = lambda n=name: self.show_tab(n)
+        for seq, action in keys.items():
+            self.bind_all(seq, key(action))
+        self.bind_all("<MouseWheel>", self._wheel)
+
+    def _wheel(self, e):
+        """The wheel scrolls the page under the pointer (lists and text boxes scroll themselves); with Ctrl, it
+        changes the text size."""
+        if e.state & 0x4:
+            if e.widget.winfo_toplevel() is self:
+                self.zoom_step(1 if e.delta > 0 else -1)
+            return "break"
+        w = e.widget  # (Tk 8.6 gives the wheel to the widget under the pointer)
+        if not isinstance(w, tk.Misc) or isinstance(w, (ttk.Treeview, tk.Text, tk.Listbox)):
+            return None  # (they scroll themselves; a name without a widget: a list's drop-down)
+        page = ui.page_of(w)
+        if page is not None:
+            page.scroll(-e.delta / 120 * ui.pz(100))
+        return None
+
+    def _into_list(self):
+        """From the search box to the list (the arrows then go from one character to the next)."""
+        tree, ids = self.list.tree, self.list.visible
+        if not ids:
+            return
+        tree.focus_set()
+        c = self.chara if self.chara in ids else ids[0]
+        tree.focus(str(c))
+        if c != self.chara:
+            self.list.select(c)
+
+    def focus_search(self):
+        self.search_entry.focus_set()
+        self.search_entry.select_range(0, "end")
+
+    def step_chara(self, d):
+        ids = self.list.visible
+        if ids:
+            i = ids.index(self.chara) + d if self.chara in ids else 0
+            self.select(ids[max(0, min(len(ids) - 1, i))])
+
+    def zoom_step(self, d):
+        i = min(range(len(ui.ZOOMS)), key=lambda k: abs(ui.ZOOMS[k] - ui.Z))
+        self.set_zoom(ui.ZOOMS[max(0, min(len(ui.ZOOMS) - 1, i + d))])
+
+    def set_zoom(self, z, save=True):
+        """Another text size: the fonts change at once; the pages are made again (their sizes follow the text)."""
+        if z == ui.Z:
+            return
+        ui.set_zoom(z)
+        if save:
+            appcache.save_settings(textZoom=z)
+        self._sizes()
+        for p in self.pages.values():
+            p.clear()
+        self.rows = {}
+        self.built, self.stale = set(), set()
+        self._build_page(self.current)
+        self.pages[self.current].fit(force=True)
+        self._draw_portrait()
+        self.after(10, self._fit_window)
+        self.after(400, self._build_all)
+        self.status.set(f"Taille du texte : {round(z * 100)} %")
+
+    def _on_resize(self, e):
+        if e.widget is self:
+            if self.resize_job:
+                self.after_cancel(self.resize_job)
+            self.resize_job = self.after(60, self._responsive)
+
+    def _responsive(self):
+        """What a narrow window leaves out, so that nothing is cut: the tool's name at the top (the title bar has
+        it), then the large picture (the header has the name)."""
+        self.resize_job = None
+        self.after(300, self._fit_hidden)
+        self.update_idletasks()
+        width = self.winfo_width()
+        if width <= 1:
+            return
+        # the top bar: its natural width, the text boxes at their smallest
+        shrink = sum(max(0, e.winfo_reqwidth() - px(70)) for e in self.top_entries)
+        title_w = self.app_title.winfo_reqwidth() + px(30)
+        shown = bool(self.app_title.winfo_manager())
+        top_need = self.top_left.master.winfo_reqwidth() - shrink - (title_w if shown else 0) + px(10)
+        if (top_need + title_w <= width) != shown:
+            if shown:
+                self.app_title.grid_remove()
+            else:
+                self.app_title.grid()
+        # the middle: the side bar, the page (its widest content), the picture
+        # (the pages are made to fit in MAIN_WIDTH; their explanations wrap at the width they get)
+        main_need = max(self.tabbar.winfo_reqwidth() + px(20), ui.pz(MAIN_WIDTH) + px(50))
+        room = width - self.side.winfo_reqwidth()
+        show = room - self.card_w >= main_need
+        if show != self.portrait_shown:
+            self.portrait_shown = show
+            if show:
+                self.portrait.pack(side="right", fill="y", before=self.main)
+                self._draw_portrait()
+            else:
+                self.portrait.pack_forget()
+
+    def _fit_window(self):
+        """With a larger text, the window gets wider when the page needs it (as far as the screen allows)."""
+        self._responsive()
+        self.update_idletasks()
+        have = self.pages[self.current].canvas.winfo_width()
+        need = max(p.inner.winfo_reqwidth() for n, p in self.pages.items() if n in self.built) - have
+        if need > 0 and have > 1 and self.state() == "normal":
+            w = min(self.winfo_screenwidth() - px(20), self.winfo_width() + need)
+            x = max(0, min(self.winfo_x(), self.winfo_screenwidth() - w - px(10)))
+            self.geometry(f"{w}x{self.winfo_height()}+{x}+{self.winfo_y()}")
+
+    def show_help(self):
+        ui.InfoDialog(self, "Raccourcis clavier", self.SHORTCUTS)
 
     # ---- start-up pictures and searches -----------------------------------------------------------------------
     def _load_assets(self):
@@ -407,6 +660,8 @@ class Studio(tk.Tk):
             text += f"  « {ch['menuName']} »"
         elif ch.get("nickname"):
             text += f"  « {ch['nickname']} »"
+        if "base" not in ch and self.is_changed(c):
+            text += "  ●"  # (a changed character is told by a sign, not only by its colour)
         return text
 
     def _row_tags(self, c):
@@ -483,6 +738,9 @@ class Studio(tk.Tk):
         self._build_page(self._page())
         self.list.select(c)
         self._prefetch()
+        if self.warm_job:
+            self.after_cancel(self.warm_job)
+        self.warm_job = self.after(150, self._warm_faces)
 
     def _reselect(self):
         """Shows the character again after a change that moves its starting values (copy, graft...)."""
@@ -493,15 +751,18 @@ class Studio(tk.Tk):
         c, ch = self.chara, self.ch()
         base = self.base_of(c)
         self.title_var.set(self.names[c] + (f"   →   {self.names[base]}" if base != c else ""))
-        for b in (self.badge_num, self.badge_rep, self.badge_mod):
-            b.pack_forget()
         self.badge_num.configure(text=f"n°{c:03d}")
-        self.badge_num.pack(side="left", padx=(0, px(6)))
+        badges = (base != c, self.is_changed(c))
         if base != c:
             self.badge_rep.configure(text=f"Remplacé par {self.names[base]}")
-            self.badge_rep.pack(side="left", padx=(0, px(6)))
-        if self.is_changed(c):
-            self.badge_mod.pack(side="left")
+        if badges != self.badges:  # (packed again only when one appears or goes)
+            for b in (self.badge_rep, self.badge_mod):
+                b.pack_forget()
+            if badges[0]:
+                self.badge_rep.pack(side="left", padx=(0, px(6)))
+            if badges[1]:
+                self.badge_mod.pack(side="left")
+            self.badges = badges
         hp, ki, st = (self.value(k) for k in ("roster.health", "roster.kiStart", "roster.stocks"))
         names = self.game.start_move_names(c, ch)
         facts = [plural(round(hp / fields.HP_BAR, 1), "barre").replace(".", ",") + " de vie",
@@ -514,8 +775,10 @@ class Studio(tk.Tk):
     # ---- the large picture -------------------------------------------------------------------------------------
     def _face(self, c):
         key = (c, self.card_w)
-        img = self.faces.get(key)
-        if img is None:
+        img = self.faces.pop(key, None)
+        if img is not None:
+            self.faces[key] = img  # (the most recent last: the oldest goes first)
+        else:
             try:
                 data = self.face_png.pop(key, None) or appcache.face(self.game, c, self.card_w)
                 img = tk.PhotoImage(data=data)
@@ -525,6 +788,19 @@ class Studio(tk.Tk):
                 self.faces.pop(next(iter(self.faces)))
             self.faces[key] = img
         return img
+
+    def _warm_faces(self):
+        """Between two clicks: the large pictures of the characters around the selected one, made ready for Tk one
+        at a time (decoding one takes a few hundredths of a second: a click on them is then immediate)."""
+        self.warm_job = None
+        ids = self.list.visible
+        i = ids.index(self.chara) if self.chara in ids else 0
+        for c in sorted(ids[max(0, i - 3):i + 4], key=lambda k: abs(ids.index(k) - i)):
+            key = (self.base_of(c), self.card_w)
+            if key not in self.faces and (key in self.face_png or appcache.face_ready(self.game, *key)):
+                self._face(key[0])
+                self.warm_job = self.after(30, self._warm_faces)
+                return
 
     def _prefetch(self):
         """Prepares the pictures of the characters around the selected one (a thread): the next click is quick."""
@@ -558,32 +834,38 @@ class Studio(tk.Tk):
         threading.Thread(target=work, daemon=True).start()
 
     def _draw_portrait(self):
+        """The sky, the glow and the name plate are drawn when the panel's size changes; for another character
+        only the picture and the two names change."""
         cv = self.portrait
-        w, h = max(cv.winfo_width(), self.card_w), max(cv.winfo_height(), px(300))
-        cv.delete("all")
-        ui.gradient(cv, w, h, ui.SKY_TOP, ui.SKY_BOTTOM)
-        if self.chara is None:
+        if self.chara is None or not self.portrait_shown:
             return
+        w, h = max(cv.winfo_width(), self.card_w), max(cv.winfo_height(), px(300))
         base = self.base_of(self.chara)
         img = self._face(base)
-        plate = px(78)
+        plate = ui.pz(78)
         ih = img.height() if img is not None else px(400)
-        top = max(0, h - plate - ih)  # (standing on the name plate; on a short window its cut feet go behind it)
-        mid = top + ih * 9 // 20
-        for r, col in ((w * 11 // 20, "#2c58a6"), (w * 8 // 20, "#3466b6")):  # a soft glow behind the character
-            cv.create_oval(w // 2 - r, mid - r, w // 2 + r, mid + r, fill=col, width=0)
-        if img is not None:
-            cv.create_image(w // 2, top, image=img, anchor="n")
-        cv.create_rectangle(0, h - plate, w, h, fill="#0c1018", width=0)
-        cv.create_rectangle(0, h - plate, w, h - plate + px(3), fill=ui.ACCENT, width=0)
+        if (w, h, ih, plate) != self.portrait_drawn:
+            self.portrait_drawn = (w, h, ih, plate)
+            cv.delete("all")
+            ui.gradient(cv, w, h, ui.SKY_TOP, ui.SKY_BOTTOM)
+            top = max(0, h - plate - ih)  # (standing on the name plate; on a short window its feet go behind it)
+            mid = top + ih * 9 // 20
+            for r, col in ((w * 11 // 20, "#2c58a6"), (w * 8 // 20, "#3466b6")):  # a soft glow behind it
+                cv.create_oval(w // 2 - r, mid - r, w // 2 + r, mid + r, fill=col, width=0)
+            cv.create_image(w // 2, top, anchor="n", tags="face")
+            cv.create_rectangle(0, h - plate, w, h, fill="#0c1018", width=0)
+            cv.create_rectangle(0, h - plate, w, h - plate + px(3), fill=ui.ACCENT, width=0)
+            cv.create_text(px(16), h - plate + ui.pz(14), anchor="nw", fill=ui.TEXT, font=ui.PLATE,
+                           width=w - px(28), tags="name")
+            cv.create_text(px(16), h - plate + ui.pz(44), anchor="nw", fill=ui.ACCENT_HI, font=ui.BOLD,
+                           width=w - px(28), tags="form")
         name, _, form = self.names[base].partition(" – ")
         ch = self.ch()
         if ch.get("menuName"):
             name, form = ch["menuName"], ch.get("menuForm", form)
-        cv.create_text(px(16), h - plate + px(14), text=name, anchor="nw", fill=ui.TEXT, font=ui.PLATE,
-                       width=w - px(28))
-        cv.create_text(px(16), h - plate + px(44), text=form or " ", anchor="nw", fill=ui.ACCENT_HI, font=ui.BOLD,
-                       width=w - px(28))
+        cv.itemconfigure("face", image=img if img is not None else "")
+        cv.itemconfigure("name", text=name)
+        cv.itemconfigure("form", text=form or " ")
 
     # ---- pages: made once, then filled for each character -------------------------------------------------------
     def _page(self):
@@ -623,7 +905,7 @@ class Studio(tk.Tk):
         grid = ttk.Frame(parent, style="Card.TFrame")
         grid.pack(anchor="w", fill="x")
         for i, key in enumerate(keys):
-            r = FieldRow(self, grid, fields.BY_KEY[key], label=(labels or {}).get(key))
+            r = FieldRow(self, grid, fields.BY_KEY[key], label=(labels or {}).get(key), short=cols > 1)
             r.grid(i // cols, i % cols)
         return grid
 
@@ -675,7 +957,7 @@ class Studio(tk.Tk):
             btn = CharButton(self, grid, "aucune — choisir…", lambda i=i: self._on_transform_pick(i))
             btn.b.grid(row=i, column=1, sticky="w", pady=px(3))
             # the cost and the remove button sit in a box of a fixed size: shown or not, nothing else moves
-            extra = ttk.Frame(grid, style="Card.TFrame", width=px(150), height=px(34))
+            extra = ttk.Frame(grid, style="Card.TFrame", width=ui.pz(150), height=ui.pz(34))
             extra.grid(row=i, column=2, sticky="w", padx=(px(12), 0))
             extra.pack_propagate(False)
             cost = tk.StringVar()
@@ -715,10 +997,10 @@ class Studio(tk.Tk):
     def _refresh_identity(self):
         w, c, ch = self.idw, self.chara, self.ch()
         base = int(ch["base"]) if "base" in ch else None
-        w["base_hint"].configure(text=f"Le personnage choisi prend la place de {self.names[c]} tout entier : modèle, "
-                                      "attaques, voix, portraits et nom dans les menus. L'original n'est plus jouable "
-                                      "tant que le pack est appliqué. Les réglages des autres onglets partent du "
-                                      "personnage choisi.")
+        ui.set_note(w["base_hint"], f"Le personnage choisi prend la place de {self.names[c]} tout entier : modèle, "
+                                    "attaques, voix, portraits et nom dans les menus. L'original n'est plus jouable "
+                                    "tant que le pack est appliqué. Les réglages des autres onglets partent du "
+                                    "personnage choisi.")
         w["base"].set(base)
         w["unbase"].configure(text="Retirer le remplacement" if base is not None else "",
                               state="normal" if base is not None else "disabled")
@@ -742,25 +1024,25 @@ class Studio(tk.Tk):
             else:
                 r["extra"].pack_forget()
         explicit = ch.get("transforms") is not None
-        w["tr_note"].configure(text="" if explicit or base is None else
-                               "Automatique : celles du personnage copié, dirigées vers les copies de ce pack quand il "
-                               "y en a (une copie de Vegeta devient la copie de Super Vegeta).")
+        ui.set_note(w["tr_note"], "" if explicit or base is None else
+                    "Automatique : celles du personnage copié, dirigées vers les copies de ce pack quand il y en a "
+                    "(une copie de Vegeta devient la copie de Super Vegeta).")
         w["tr_auto"].configure(text="Revenir aux transformations automatiques" if explicit else "",
                                state="normal" if explicit else "disabled")
 
         if "grid" not in self.game._cache and menunames.cached(self.game.root, game.tool_folder()) is None:
-            w["forms_hint"].configure(text="Lecture de la grille du jeu… (une seule fois)")
+            ui.set_note(w["forms_hint"], "Lecture de la grille du jeu… (une seule fois)")
             shown, editable = [], False
         elif self.game.heads_cell(c):
-            w["forms_hint"].configure(text="Quand on choisit cette case, on choisit ensuite une de ces formes pour "
-                                           "commencer le combat (7 au plus). La première est toujours ce personnage.")
+            ui.set_note(w["forms_hint"], "Quand on choisit cette case, on choisit ensuite une de ces formes pour "
+                                         "commencer le combat (7 au plus). La première est toujours ce personnage.")
             shown, editable = self._current_forms(), True
         else:  # a form of another cell: that cell's forms, to look at
             cell = next((cell for cell in self.game.grid() if c in forms.cell_forms(cell)), None)
-            w["forms_hint"].configure(
-                text=f"Ce personnage n'a pas sa propre case : c'est une des formes de la case de "
-                     f"{self.names[cell[0]]} (ci-dessous). Change les formes depuis ce personnage-là." if cell else
-                     "Ce personnage n'est pas dans la grille de sélection.")
+            ui.set_note(w["forms_hint"],
+                        f"Ce personnage n'a pas sa propre case : c'est une des formes de la case de "
+                        f"{self.names[cell[0]]} (ci-dessous). Change les formes depuis ce personnage-là." if cell else
+                        "Ce personnage n'est pas dans la grille de sélection.")
             shown, editable = (forms.cell_forms(cell) if cell else []), False
         for k, (btn, rm) in enumerate(self.form_rows):
             if k < len(shown):
@@ -896,14 +1178,14 @@ class Studio(tk.Tk):
             row.pack(anchor="w", pady=(px(2), px(2)))
             ttk.Label(row, text="Remplacer par", style="Card.TLabel", width=16).pack(side="left")
             card["btn"] = CharButton(self, row, "garder la sienne — choisir…",
-                                     lambda k=kind, s=slot: self._on_graft_pick(k, s), width=30)
+                                     lambda k=kind, s=slot: self._on_graft_pick(k, s), width=28)
             card["btn"].b.pack(side="left")
             # the attack list and the remove button in a box of a fixed size (nothing moves when they show)
-            extra = ttk.Frame(row, style="Card.TFrame", width=px(330), height=px(40))
+            extra = ttk.Frame(row, style="Card.TFrame", width=ui.pz(270), height=ui.pz(40))
             extra.pack(side="left", padx=(px(8), 0))
             extra.pack_propagate(False)
             card["extra"] = ttk.Frame(extra, style="Card.TFrame")
-            card["combo"] = ttk.Combobox(card["extra"], width=30, state="readonly")
+            card["combo"] = ttk.Combobox(card["extra"], width=24, state="readonly")
             card["combo"].pack(side="left")
             card["combo"].bind("<<ComboboxSelected>>", lambda e, k=kind, s=slot: self._on_graft_attack(k, s))
             rm = ttk.Button(card["extra"], text="✕", style="Icon.TButton", width=2,

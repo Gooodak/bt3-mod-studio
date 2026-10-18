@@ -94,8 +94,15 @@ class Game:
         return out
 
     def base_entries(self, chara):
+        """Entries of the character's first costume (the first file that is one: 1 file read, not 8)."""
         if chara not in self._cache:
-            self._cache[chara] = self.costumes(chara)[0][1]
+            for idx in costume_files(chara):
+                data = self.original(idx)
+                if struct.unpack_from("<I", data, 0)[0] == COSTUME_PAK:
+                    self._cache[chara] = pak.read(data)
+                    break
+            else:
+                raise IndexError(f"character {chara}: no costume file")
         return self._cache[chara]
 
     def roster_entries(self):

@@ -28,6 +28,32 @@ def cache_dir(game):
     return d
 
 
+def _settings_path():
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "BT3 Mod Studio", "settings.json")
+
+
+def settings():
+    """The person's own settings of the window (text size...): {} the first time."""
+    try:
+        with open(_settings_path(), encoding="utf-8") as f:
+            s = json.load(f)
+        return s if isinstance(s, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_settings(**values):
+    s = settings()
+    s.update(values)
+    try:
+        os.makedirs(os.path.dirname(_settings_path()), exist_ok=True)
+        with open(_settings_path(), "w", encoding="utf-8") as f:
+            json.dump(s, f)
+    except OSError:
+        pass
+
+
 def _key(game):
     """What the cache was made from: the game folder and the sizes of the files it reads first."""
     sizes = []
@@ -130,24 +156,33 @@ def make_chips(game, size):
     return path
 
 
+FACES = "faces2_%d"      # (2: the top edge fades; the folders of older versions are removed)
+
+
 def face_ready(game, chara, width=256):
-    return os.path.exists(os.path.join(cache_dir(game), "faces_%d" % width, "%03d.png" % chara))
+    return os.path.exists(os.path.join(cache_dir(game), FACES % width, "%03d.png" % chara))
 
 
 def face(game, chara, width=256):
     """PNG of a character's large picture of the select screens, whole (the drawing is cut at the picture's edges,
-    the game shows it in a frame of that width) and `width` wide; kept in the cache folder after the first time."""
-    path = os.path.join(cache_dir(game), "faces_%d" % width, "%03d.png" % chara)
+    the game shows it in a frame of that width; a cut at the top fades in) and `width` wide; kept in the cache
+    folder after the first time."""
+    path = os.path.join(cache_dir(game), FACES % width, "%03d.png" % chara)
     try:
         with open(path, "rb") as f:
             return f.read()
     except OSError:
         pass
     w, h, px = images.face(game.original, chara)
+    px = images.fade_top(w, h, px, h // 7)
     if w != width:
         h, px = h * width // w, images.resize(w, h, px, width, h * width // w)
     data = images.png(width, h, px, level=1)
     try:
+        old = os.path.join(cache_dir(game), "faces_%d" % width)
+        if os.path.isdir(old):
+            import shutil
+            shutil.rmtree(old, ignore_errors=True)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "wb") as f:
             f.write(data)

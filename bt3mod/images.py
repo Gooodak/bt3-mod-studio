@@ -191,6 +191,20 @@ def resize(w, h, px, nw, nh):
     return bytes(out)
 
 
+def fade_top(w, h, px, rows):
+    """When the drawing is cut at the picture's top edge (a third of the select-screen pictures): its first `rows`
+    rows fade in from transparent, so that it melts into what is behind it instead of ending on a straight line."""
+    if sum(1 for a in px[3:w * 4:4] if a > 0x20) < w // 50:
+        return px  # (nothing at the top edge: the picture ends by itself)
+    out = bytearray(px)
+    for y in range(min(rows, h)):
+        t = (y + 0.5) / rows
+        k = t * t * (3 - 2 * t)
+        line = slice(y * w * 4 + 3, (y + 1) * w * 4, 4)
+        out[line] = bytes(int(a * k) for a in out[line])
+    return bytes(out)
+
+
 def png(w, h, px, level=6):
     """RGBA bytes as a PNG file."""
     def chunk(t, b):
