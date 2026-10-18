@@ -3,7 +3,10 @@ joining over 127.0.0.1, each on its own data folder (the second is made of hard 
 folder of its own). Checks:
   1. the same pack on both sides: they connect;
   2. a pack on one side only: refused as "another version or other mods";
-  3. the official port (testkit/bt3-upstream.exe) against this edition: refused.
+  3. the official port (testkit/bt3-upstream.exe) against this edition: refused;
+  4. the same added character package (a copy of Vegeta, made by z3xox's import_chara.py) on both: they connect,
+     both with the package loaded;
+  5. different packages: refused.
     py -I tools/net_check.py          (about 1 to 2 minutes; the player's own game is never touched)"""
 import os
 import shutil
@@ -19,8 +22,10 @@ import kit  # noqa: E402
 from bt3mod import game, modpack  # noqa: E402
 
 DATA_B = os.path.join(kit.KIT, "gamedata_b")
+IMPORT = os.path.join(os.path.dirname(kit.KIT), "source", "port", "tools", "import_chara.py")
 PORT = 47131
 RESULTS = []
+NONE = os.path.join(kit.KIT, "chars_none")
 
 
 def check(name, ok, detail=""):
@@ -54,24 +59,101 @@ def set_pack(root, pack):
         g.apply(pack)
 
 
-def run(exe, root, role, log, saves):
+def packages():
+    """testkit/chars_a and chars_b: the same package (Vegeta added); chars_c: another (Goku Early added)."""
+    folders = {}
+    for name, chara, label in (("chars_a", 31, "Vegeta Test"), ("chars_c", 0, "Goku Test")):
+        d = os.path.join(kit.KIT, name)
+        if not os.path.isdir(os.path.join(d, label)):
+            os.makedirs(d, exist_ok=True)
+            subprocess.run([sys.executable, "-I", IMPORT, kit.DATA, str(chara), os.path.join(d, label), "--name", label],
+                           check=True, capture_output=True)
+        folders[name] = d
+    b = os.path.join(kit.KIT, "chars_b")
+    shutil.rmtree(b, ignore_errors=True)
+    shutil.copytree(folders["chars_a"], b)
+    folders["chars_b"] = b
+    empty = os.path.join(kit.KIT, "chars_none")
+    os.makedirs(empty, exist_ok=True)
+    folders["none"] = empty
+    return folders
+
+
+def press_table(path, blanks, seed=1):
+    """BT3_NET_SCRIPT's table: 36 bytes per blank (pad 1, pad 2), the PS2 pad's 18 bytes each (buttons active-low,
+    sticks at 0x80, then the pressures). Random buttons held a few blanks each; never Select, Start or Triangle
+    (the pause and "back" would leave the fight)."""
+    import random
+    rnd = random.Random(seed)
+    usable = [(0, 4), (0, 5), (0, 6), (0, 7), (1, 0), (1, 1), (1, 2), (1, 3), (1, 5), (1, 6), (1, 7)]
+    out = bytearray()
+    state = [None, None]
+    for blank in range(blanks):
+        for pad in range(2):
+            if state[pad] is None or state[pad][0] <= blank:
+                held = rnd.sample(usable, rnd.choice((0, 1, 1, 2)))
+                if rnd.random() < 0.35:
+                    held.append((1, 6))  # (cross often: the selects go on)
+                state[pad] = (blank + rnd.randint(4, 20), held, [rnd.choice((0x00, 0x80, 0xFF)) for _ in range(4)])
+            _, held, sticks = state[pad]
+            b = [0xFF, 0xFF]
+            for byte, bit in held:
+                b[byte] &= ~(1 << bit)
+            out += bytes(b) + bytes(sticks) + bytes(0xFF if (k < 8 and b[1] != 0xFF) else 0 for k in range(12))
+    open(path, "wb").write(bytes(out))
+
+
+def fight(chars, seconds=150):
+    """Both copies in a session, windowless, playing one table of random presses, both fighters the added
+    character: did a battle start, and did the two games stay the same (the netcode compares them itself)?"""
+    tmp = tempfile.mkdtemp(prefix="bt3fight_")
+    table = os.path.join(tmp, "presses.bin")
+    press_table(table, 60 * 600)
+    logs = [os.path.join(tmp, "host.log"), os.path.join(tmp, "join.log")]
+    hashes = [os.path.join(tmp, "host_hash.txt"), os.path.join(tmp, "join_hash.txt")]
+    extra = dict(BT3_GS="none", BT3_NET_SCRIPT=table, BT3_TEST_CHARA="0xC6,0xC6", BT3_CHARA_LOG="1")
+    procs = [run(kit.EXE, kit.DATA, "host", logs[0], os.path.join(tmp, "saves_h"), chars[0],
+                 dict(extra, BT3_HASH=hashes[0]))]
+    time.sleep(1.0)
+    procs.append(run(kit.EXE, DATA_B, "join", logs[1], os.path.join(tmp, "saves_j"), chars[1],
+                     dict(extra, BT3_HASH=hashes[1])))
+    end = time.time() + seconds
+    while time.time() < end and all(p.poll() is None for p in procs):
+        time.sleep(1.0)
+    for p in procs:
+        if p.poll() is None:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
+    time.sleep(1.0)
+    fights = []
+    for f in hashes:  # blank -> (fight values' hash, health), the last line of a blank counting (rollback)
+        rows = {}
+        for line in open(f, errors="replace") if os.path.exists(f) else []:
+            w = line.split()
+            if len(w) >= 6 and w[2] != "0000000000000000" and w[3] == "hp":
+                rows[int(w[0])] = (w[2], int(w[4]), int(w[5]))
+        fights.append(rows)
+    return [open(f, errors="replace").read() for f in logs], fights, tmp
+
+
+def run(exe, root, role, log, saves, chars, extra=None):
     shutil.rmtree(saves, ignore_errors=True)
     shutil.copytree(os.path.join(HERE, "testsave"), saves)
     env = dict(os.environ, BT3_DATA=root, BT3_SAVES=saves, BT3_NOSOUND="1", BT3_NOMOVIE="1", BT3_UPDATE_CHECK="0",
-               BT3_NET_SESSION="1")
+               BT3_NET_SESSION="1", BT3_CHARACTERS=chars, **(extra or {}))
     env.pop("BT3_TEST", None)
     env["BT3_NET_HOST" if role == "host" else "BT3_NET_JOIN"] = str(PORT) if role == "host" else f"127.0.0.1:{PORT}"
     return subprocess.Popen([exe], cwd=kit.KIT, env=env, stdout=open(log, "w"), stderr=subprocess.STDOUT,
                             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
 
 
-def match(host_exe, join_exe, seconds=45):
+def match(host_exe, join_exe, chars=None, seconds=45):
     """Starts the two copies; returns (connected?, host log, joiner log)."""
     tmp = tempfile.mkdtemp(prefix="bt3net_")
     logs = [os.path.join(tmp, "host.log"), os.path.join(tmp, "join.log")]
-    procs = [run(host_exe, kit.DATA, "host", logs[0], os.path.join(tmp, "saves_h"))]
+    chars = chars or (NONE, NONE)
+    procs = [run(host_exe, kit.DATA, "host", logs[0], os.path.join(tmp, "saves_h"), chars[0])]
     time.sleep(1.0)
-    procs.append(run(join_exe, DATA_B, "join", logs[1], os.path.join(tmp, "saves_j")))
+    procs.append(run(join_exe, DATA_B, "join", logs[1], os.path.join(tmp, "saves_j"), chars[1]))
     end = time.time() + seconds
 
     def read():
@@ -97,8 +179,30 @@ def lines(text, *keys):
     return " | ".join(l.strip()[10:110] for l in text.splitlines() if any(k in l for k in keys))[:220]
 
 
+def fight_check():
+    pk = packages()
+    text, fights, tmp = fight((pk["chars_a"], pk["chars_b"]))
+    battles = [t.count("a battle is set up") for t in text]
+    differ = [l for t in text for l in t.splitlines() if "the two games differ" in l]
+    own = all("Vegeta Test_1p.pak" in t for t in text)  # (BT3_CHARA_LOG: the package's model was served)
+    both = sorted(set(fights[0]) & set(fights[1]))
+    unequal = [b for b in both if fights[0][b] != fights[1][b]]
+    hits = len({fights[0][b][1:] for b in both})  # (how many different health pairs: the fighters hit each other)
+    check("online fight with the added character: the same on both",
+          min(battles) > 0 and not differ and len(both) > 600 and not unequal and hits > 2 and own,
+          f"{len(both)} fight blanks compared, {len(unequal)} differ, {hits} health states, added character "
+          f"{'served' if own else 'NOT seen'}{', ' + differ[0][10:90] if differ else ''}  (logs: {tmp})")
+
+
 def main():
     sys.stdout.reconfigure(errors="replace")
+    os.makedirs(NONE, exist_ok=True)
+    if "--fight" in sys.argv:
+        kit.stop(quiet=True)
+        second_root()
+        fight_check()
+        print(f"\n{sum(RESULTS)}/{len(RESULTS)} passed")
+        return 0 if all(RESULTS) else 1
     kit.stop(quiet=True)
     second_root()
     ours, official = kit.EXE, os.path.join(kit.KIT, "bt3-upstream.exe")
@@ -122,6 +226,15 @@ def main():
               lines(text[1], "another version", "other mods", "connected"))
     set_pack(kit.DATA, None)
     set_pack(DATA_B, None)
+    pk = packages()
+    ok, text = match(ours, ours, (pk["chars_a"], pk["chars_b"]))
+    loaded = all("characters: 1 added" in t for t in text)
+    check("same added character on both sides: they connect", ok and loaded,
+          lines(text[1], "characters: 1 added", "connected", "other mods"))
+    ok, text = match(ours, ours, (pk["chars_a"], pk["chars_c"]))
+    check("different character packages: refused", not ok and "other mods" in text[1],
+          lines(text[1], "characters: 1 added", "other mods", "connected"))
+    fight_check()
     for name in ("bt3.exe", "bt3-upstream.exe"):  # (the test programs only; the player's game has another name)
         subprocess.run(["taskkill", "/F", "/IM", name], capture_output=True)
     print(f"\n{sum(RESULTS)}/{len(RESULTS)} passed")
