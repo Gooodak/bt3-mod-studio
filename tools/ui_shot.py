@@ -128,6 +128,24 @@ def main(out, steps):
             app.refresh_list()
             app.select(studio.ADDED + len(app.added()) - 1)
             app._refresh_row()
+        elif cmd == "updates":  # the updates window, after its check (the token of `gh` for private repositories)
+            if not os.environ.get("BT3MS_GITHUB_TOKEN"):
+                import subprocess
+                gh = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "gh", "bin", "gh.exe")
+                r = subprocess.run([gh, "auth", "token"], capture_output=True, text=True)
+                os.environ["BT3MS_GITHUB_TOKEN"] = r.stdout.strip()
+            ui.Picker.HIDDEN = True
+            app.open_updates()
+            d = app.updates_dialog
+            end = time.time() + 15
+            while time.time() < end and not app.update_found:
+                app.update()
+                time.sleep(0.05)
+            for _ in range(20):
+                app.update()
+                time.sleep(0.02)
+            capture(int(d.wm_frame(), 16), os.path.join(out, "updates.png"))
+            d.destroy()
         elif cmd == "mods":  # the character mods window
             ui.Picker.HIDDEN = True
             app.open_mods()

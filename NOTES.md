@@ -40,6 +40,21 @@ problème (conflit de fusion, test qui échoue) sans rien pousser ; le journal e
 Tags de nos versions : `v0.1.NN-etendu.K` (le jeu ne lit que `v0.1.NN` pour annoncer une mise à jour).
 En ligne, tous les joueurs doivent avoir la même version (le jeu le vérifie).
 
+## Mises à jour dans l'outil
+
+- Au démarrage, l'outil demande à GitHub (en arrière-plan) la dernière version de l'outil (`Gooodak/bt3-mod-studio`,
+  tags `v1.0.0`, `v1.0.1`… ; la version de l'outil est `TOOL_VERSION` dans `bt3mod/updates.py`, à monter à chaque
+  version publiée) et de l'édition étendue (`Gooodak/bt3-port-etendu`). Le bouton « Mises à jour » en bas passe en
+  orange quand il y a du nouveau.
+- Outil : téléchargé, puis copié par un petit script une fois l'outil fermé, et relancé.
+- Jeu : le zip est décompressé par-dessus le dossier du jeu (jeu fermé) ; la première fois, l'exe officiel est gardé
+  (`Tenkaichi3Decomp-officielle.exe`) et « Revenir à l'édition officielle » le remet. `bt3ms_installed.json` dans le
+  dossier du jeu dit ce qui est installé.
+- **Tant que les dépôts sont privés, GitHub ne répond pas sans autorisation** : les amis ne verront les mises à jour
+  qu'une fois les dépôts publics (ou avec un jeton dans `BT3MS_GITHUB_TOKEN`).
+- Publier une version de l'outil : monter `TOOL_VERSION`, `py -I tools/build_exe.py`, zipper (exe + runtime + guides
+  dans un dossier `bt3-mod-studio/`), `gh release create vX.Y.Z <zip> -R Gooodak/bt3-mod-studio`.
+
 ## Jeu en ligne entre amis
 
 - Même pack (même code `BT3-1-…`, même empreinte dans « Partager… »), mêmes mods de personnages importés (même
@@ -59,6 +74,7 @@ fenêtre. Toujours fermer le jeu de test à la fin.
 | `py -I tools/ui_check.py` | la fenêtre utilisée comme par une personne, puis le pack en combat | ~2 min |
 | `py -I tools/net_check.py` | en ligne : mêmes mods acceptés, différents refusés, combat identique sur les deux jeux | ~5 min |
 | `py -I tools/import_check.py` | l'import d'un mod de la communauté, puis un combat avec | ~1 min |
+| `py -I tools/update_check.py` | les mises à jour : version lue sur GitHub, passage officielle → étendue sur un faux dossier de jeu, retour, mise à jour de l'outil sur une copie | ~1 min, réseau |
 
 À savoir : le jeu ne lit le dossier `characters` qu'au démarrage (appliquer, puis lancer). Le jeu de test se compile
 dans WSL : `testkit-src/rebuild_etendu.sh` (jeu de test), `testkit-src/release_etendu.sh` (zip à distribuer).

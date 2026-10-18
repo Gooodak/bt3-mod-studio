@@ -139,6 +139,9 @@ def setup(root, zoom=1.0):
     st.configure("Seg.TButton", background=PANEL, foreground=MUTED, bordercolor=BORDER, lightcolor=PANEL,
                  darkcolor=PANEL, padding=(px(10), px(3)), font=SMALL)
     st.map("Seg.TButton", background=[("active", FIELD)], foreground=[("active", TEXT)])
+    st.configure("SegHot.TButton", background=MOD_BG, foreground=MOD_TEXT, bordercolor=ACCENT, lightcolor=MOD_BG,
+                 darkcolor=MOD_BG, padding=(px(10), px(3)), font=SMALL)  # (something to look at: an update)
+    st.map("SegHot.TButton", background=[("active", ACCENT_DK)], foreground=[("active", TEXT)])
     st.configure("SegOn.TButton", background=FIELD_HI, foreground=TEXT, bordercolor=ACCENT, lightcolor=FIELD_HI,
                  darkcolor=FIELD_HI, padding=(px(10), px(3)), font=SMALL)
 

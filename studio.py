@@ -217,6 +217,8 @@ class Studio(tk.Tk):
         self.after(10, self._show)
         self.after(120, self._load_assets)  # (after the first drawing of the window)
         self.after(700, self._build_all)
+        if not self.HIDDEN:
+            self.after(2500, self._check_updates)  # (in the background, once the window is there)
 
     def _show(self):
         """The window appears: dark title bar first (Windows 10 takes it at the next change of the window, here
@@ -302,6 +304,10 @@ class Studio(tk.Tk):
         bar = ttk.Frame(self, style="Panel.TFrame", padding=(px(12), px(3), px(8), px(3)))
         bar.pack(fill="x", side="bottom")
         ttk.Button(bar, text="Raccourcis clavier (F1)", style="Seg.TButton", command=self.show_help).pack(side="right")
+        self.update_btn = ttk.Button(bar, text="Mises à jour", style="Seg.TButton", command=self.open_updates)
+        self.update_btn.pack(side="right", padx=(0, px(10)))
+        ui.Tooltip(self.update_btn, lambda: self.update_note or "Vérifier si l'outil ou le jeu ont une nouvelle version")
+        self.update_note, self.update_found = "", {}
         zoom = ttk.Frame(bar, style="Panel.TFrame")
         zoom.pack(side="right", padx=(0, px(16)))
         ttk.Label(zoom, text="Taille du texte", style="Panel.Muted.TLabel").pack(side="left", padx=(0, px(6)))
@@ -1522,6 +1528,188 @@ class Studio(tk.Tk):
         self._refresh_row()
         self.status.set(f"Personnage ajouté : {name}. Donne-lui un nom dans « Nom dans les menus », puis change "
                         "ses attaques et ses valeurs.")
+
+    # ---- updates of the tool and of the game -----------------------------------------------------------------
+    def _check_updates(self, done=None):
+        """Asks GitHub, in a thread, whether the tool or the game has a newer version; the button at the bottom
+        turns orange when one has."""
+        from bt3mod import updates
+        found = {}
+
+        def work():
+            try:
+                found["tool"] = updates.tool_update()
+            except updates.UpdateError as e:
+                found["tool_error"] = str(e)
+            try:
+                found["game"], found["game_why"] = updates.game_update(self.game)
+            except updates.UpdateError as e:
+                found["game"], found["game_error"] = None, str(e)
+
+        def wait():
+            if t.is_alive():
+                self.after(300, wait)
+                return
+            self.update_found = found
+            news = [w for w, k in (("l'outil", "tool"), ("le jeu", "game")) if found.get(k)]
+            self.update_note = ("Mise à jour disponible pour " + " et ".join(news) + " : clique pour voir.") if news \
+                else ""
+            self.update_btn.configure(text="● Mise à jour disponible" if news else "Mises à jour",
+                                      style="SegHot.TButton" if news else "Seg.TButton")
+            if done:
+                done()
+        t = threading.Thread(target=work, daemon=True)
+        t.start()
+        self.after(300, wait)
+
+    def open_updates(self):
+        """The window of updates: the tool's and the game's versions, and the buttons that update them."""
+        from bt3mod import updates
+        win = tk.Toplevel(self)
+        win.withdraw()
+        win.title("Mises à jour")
+        win.configure(bg=ui.PANEL)
+        win.transient(self)
+        box = ttk.Frame(win, style="Panel.TFrame", padding=(px(18), px(14), px(18), px(14)))
+        box.pack(fill="both", expand=True)
+        ttk.Label(box, text="Mises à jour", style="Panel.Title.TLabel").pack(anchor="w")
+        body = ttk.Frame(box, style="Panel.TFrame")
+        body.pack(fill="x", pady=(px(8), 0))
+        busy = ttk.Label(box, text="", style="Panel.Accent.TLabel")
+        busy.pack(anchor="w", pady=(px(10), 0))
+        row = ttk.Frame(box, style="Panel.TFrame")
+        row.pack(fill="x", pady=(px(12), 0))
+        ttk.Button(row, text="Fermer", command=win.destroy).pack(side="right")
+        ttk.Button(row, text="Vérifier à nouveau", command=lambda: (busy.configure(text="Vérification…"),
+                                                                   self._check_updates(fill))).pack(side="left")
+        win.bind("<Escape>", lambda e: win.destroy())
+
+        def line(parent, title, text, button=None, command=None, link=None, link_cmd=None):
+            fr = ttk.Frame(parent, style="Panel.TFrame")
+            fr.pack(fill="x", pady=px(6))
+            ttk.Label(fr, text=title, style="Panel.TLabel", font=ui.BOLD).pack(anchor="w")
+            ttk.Label(fr, text=text, style="Panel.Muted.TLabel", wraplength=ui.pz(470), justify="left").pack(anchor="w")
+            if button:
+                ttk.Button(fr, text=button, style="Accent.TButton", command=command).pack(anchor="w", pady=(px(4), 0))
+            if link:
+                ttk.Button(fr, text=link, style="Link.TButton", command=link_cmd).pack(anchor="w")
+
+        def fill():
+            busy.configure(text="")
+            for w in body.winfo_children():
+                w.destroy()
+            f = self.update_found
+            if f.get("tool"):
+                line(body, f"BT3 Mod Studio {updates.TOOL_VERSION}",
+                     f"Nouvelle version : {f['tool']['tag']}. L'outil se fermera, se mettra à jour et se rouvrira.",
+                     "Mettre à jour l'outil", run_tool)
+            else:
+                line(body, f"BT3 Mod Studio {updates.TOOL_VERSION}",
+                     "À jour." if "tool_error" not in f else f"Vérification impossible : {f['tool_error']}.")
+            edition = self.game.edition()
+            have = updates.installed(self.game)
+            label = {"etendu": "édition étendue", "officielle": "édition officielle"}.get(edition, "introuvable")
+            title = f"Le jeu : {label}" + (f" ({have['tag']})" if have.get("tag") and edition == "etendu" else "")
+            kept = os.path.exists(os.path.join(updates.game_dir(self.game), "Tenkaichi3Decomp-officielle.exe"))
+            back = ("Revenir à l'édition officielle", run_back) if edition == "etendu" and kept else (None, None)
+            if f.get("game"):
+                switching = edition != "etendu"
+                line(body, title,
+                     (f"L'édition étendue {f['game']['tag']} est disponible : personnages ajoutés, jeu en ligne "
+                      "avec les mêmes mods. L'exe officiel est gardé de côté pour revenir en arrière."
+                      if switching else f"Nouvelle version : {f['game']['tag']}.") + " Le jeu doit être fermé.",
+                     "Passer à l'édition étendue" if switching else "Mettre à jour le jeu", run_game, *back)
+            else:
+                line(body, title, ("À jour." if "game_error" not in f else
+                                   f"Vérification impossible : {f['game_error']}."), None, None, *back)
+            win.update_idletasks()
+            win.geometry(f"{max(win.winfo_reqwidth(), ui.pz(520))}x{win.winfo_reqheight()}")  # (fits its content)
+
+        def in_thread(work, then, text):
+            busy.configure(text=text)
+            box_ = {}
+
+            def go():
+                try:
+                    box_["out"] = work()
+                except (updates.UpdateError, OSError, zipfile_error) as e:
+                    box_["error"] = str(e)
+            t = threading.Thread(target=go, daemon=True)
+            t.start()
+
+            def wait():
+                if t.is_alive():
+                    win.after(200, wait)
+                    return
+                busy.configure(text="")
+                if "error" in box_:
+                    messagebox.showerror(TITLE, box_["error"], parent=win)
+                else:
+                    then(box_.get("out"))
+            win.after(200, wait)
+
+        import zipfile
+        zipfile_error = zipfile.BadZipFile
+
+        def run_game():
+            rel = self.update_found["game"]
+            if updates.game_running():
+                messagebox.showwarning(TITLE, "Le jeu est ouvert : ferme-le d'abord.", parent=win)
+                return
+            asset = updates.pick(rel["assets"], r"windows.*\.zip$")
+
+            def work():
+                path = os.path.join(tempfile.mkdtemp(prefix="bt3ms_"), asset["name"])
+                updates.download(asset, path)
+                return updates.install_game(self.game, path, "etendu", rel["tag"])
+            in_thread(work, lambda n: (messagebox.showinfo(
+                TITLE, f"Jeu mis à jour : édition étendue {rel['tag']} ({n} fichiers). Tu peux le lancer.",
+                parent=win), self._check_updates(fill)), "Téléchargement et installation du jeu…")
+
+        def run_back():
+            if not messagebox.askyesno(TITLE, "Remettre l'exe officiel gardé de côté ? Les personnages ajoutés et le "
+                                              "jeu en ligne avec des mods ne marcheront plus.", parent=win):
+                return
+            try:
+                updates.back_to_official(self.game)
+            except updates.UpdateError as e:
+                messagebox.showerror(TITLE, str(e), parent=win)
+                return
+            self._check_updates(fill)
+
+        def run_tool():
+            if not getattr(sys, "frozen", False):
+                messagebox.showinfo(TITLE, "La mise à jour automatique concerne le programme (BT3 Mod Studio.exe), "
+                                           "pas le code source.", parent=win)
+                return
+            if not self._keep_changes():
+                return
+            rel = self.update_found["tool"]
+            asset = updates.pick(rel["assets"], r"\.zip$")
+
+            def work():
+                path = os.path.join(tempfile.mkdtemp(prefix="bt3ms_"), asset["name"])
+                updates.download(asset, path)
+                return updates.stage_tool(path, game.tool_folder(), os.getpid())
+
+            def then(script):
+                updates.run_staged(script)
+                self.destroy()
+            in_thread(work, then, "Téléchargement de la nouvelle version de l'outil…")
+
+        import tempfile
+        if self.update_found:
+            fill()
+        else:
+            busy.configure(text="Vérification…")
+            self._check_updates(fill)
+        self.updates_dialog = win
+        win.update_idletasks()
+        w = max(win.winfo_reqwidth(), ui.pz(520))
+        win.geometry(f"+{self.winfo_rootx() + (self.winfo_width() - w) // 2}+{self.winfo_rooty() + px(100)}")
+        win.attributes("-alpha", 0.0)
+        win.deiconify()
+        win.after(20, lambda: ui.dark_title(win, show=not getattr(ui.Picker, "HIDDEN", False)))
 
     def open_mods(self):
         """The character mods installed in the game (the extended edition's characters folder): import, remove."""
