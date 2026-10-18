@@ -337,7 +337,11 @@ class Studio(tk.Tk):
         self.count_lbl = ttk.Label(seg, text="", style="Panel.Muted.TLabel")
         self.count_lbl.pack(side="right", padx=px(4))
         add = ttk.Button(side, text="＋  Ajouter un personnage", command=self.add_character)
-        add.pack(fill="x", pady=(0, px(8)))
+        add.pack(fill="x", pady=(0, px(4)))
+        mods = ttk.Button(side, text="Mods de personnages…", style="Seg.TButton", command=self.open_mods)
+        mods.pack(fill="x", pady=(0, px(8)))
+        ui.Tooltip(mods, "Importer un personnage fait par la communauté (un dossier ou un zip de fichiers du jeu), "
+                         "voir et retirer les mods installés. Demande l'édition étendue du port.")
         ui.Tooltip(add, "Un personnage EN PLUS dans la grille, fait à partir d'un personnage du jeu : ses attaques, "
                         "ses valeurs et son nom se changent ensuite comme pour les autres. Il demande l'édition "
                         "étendue du port.")
@@ -1518,6 +1522,103 @@ class Studio(tk.Tk):
         self._refresh_row()
         self.status.set(f"Personnage ajouté : {name}. Donne-lui un nom dans « Nom dans les menus », puis change "
                         "ses attaques et ses valeurs.")
+
+    def open_mods(self):
+        """The character mods installed in the game (the extended edition's characters folder): import, remove."""
+        from bt3mod import importer
+        win = tk.Toplevel(self)
+        win.withdraw()
+        win.title("Mods de personnages")
+        win.configure(bg=ui.PANEL)
+        win.transient(self)
+        box = ttk.Frame(win, style="Panel.TFrame", padding=(px(16), px(14), px(16), px(14)))
+        box.pack(fill="both", expand=True)
+        ttk.Label(box, text="Mods de personnages", style="Panel.Title.TLabel").pack(anchor="w")
+        edition = self.game.edition()
+        text = ("Un mod de personnage ajoute un personnage EN PLUS dans la grille : un dossier ou un zip de fichiers "
+                "du jeu, comme la communauté les partage (« Vegeta(1733).unk », « …_1p.pak »…). Ferme le jeu avant "
+                "d'importer, relance-le après. Pour jouer en ligne ensemble, envoyez-vous les mêmes mods : "
+                "l'empreinte ci-dessous doit être la même chez tous.")
+        if edition != "etendu":
+            text += "\n\n⚠ Le jeu installé est l'édition officielle : il ne lit pas ces mods (il faut l'édition étendue)."
+        ttk.Label(box, text=text, style="Panel.Muted.TLabel", wraplength=ui.pz(560), justify="left").pack(
+            anchor="w", pady=(px(4), px(10)))
+        import tkinter.font as tkfont
+        st = ttk.Style(self)
+        st.configure("Mods.Treeview", rowheight=tkfont.Font(name=ui.FONT, exists=True).metrics("linespace") + px(10))
+        st.configure("Mods.Treeview.Heading", background=ui.FIELD, foreground=ui.TEXT, font=ui.SMALL, relief="flat")
+        tree = ttk.Treeview(box, columns=("name", "base", "size", "kind"), show="headings", height=8,
+                            selectmode="browse", style="Mods.Treeview")
+        for col, title, width in (("name", "Nom", 220), ("base", "Personnage de base", 190), ("size", "Taille", 80),
+                                  ("kind", "Origine", 120)):
+            tree.heading(col, text=title)
+            tree.column(col, width=ui.pz(width), anchor="w")
+        tree.pack(fill="both", expand=True)
+        mark = ttk.Label(box, text="", style="Panel.Accent.TLabel")
+        mark.pack(anchor="w", pady=(px(8), 0))
+
+        def fill():
+            tree.delete(*tree.get_children())
+            for p in importer.installed(self.game):
+                b = p.get("replaces") or p.get("base")
+                base = self.names[int(b)] if b is not None and str(b).isdigit() and int(b) < len(self.names) else "—"
+                tree.insert("", "end", iid=p["folder"], values=(
+                    p.get("name") or p["folder"], ("remplace " if p.get("replaces") else "") + base,
+                    f"{p['size'] / 1e6:.1f} Mo", "un pack de l'outil" if p["ours"] else "importé"))
+            m = importer.mark(self.game)
+            mark.configure(text=f"Empreinte des mods installés : {m}" if m else "Aucun mod installé.")
+
+        def do_import(zip_file):
+            src = (filedialog.askopenfilename(parent=win, title="Le zip du mod", filetypes=[("Zip", "*.zip")])
+                   if zip_file else filedialog.askdirectory(parent=win, title="Le dossier du mod"))
+            if not src:
+                return
+            try:
+                r = importer.import_mod(self.game, src)
+            except (importer.ImportError_, OSError, ValueError) as e:
+                messagebox.showerror(TITLE, f"Import impossible : {e}", parent=win)
+                return
+            fill()
+            base = f"\nPersonnage de base : {self.names[r['base']]} ({r['why']})." if r["base"] is not None else ""
+            notes = ("\n\nRemarques :\n- " + "\n- ".join(r["notes"])) if r["notes"] else ""
+            messagebox.showinfo(TITLE, f"« {r['name']} » est installé ({len(r['files'])} fichiers).{base}{notes}\n\n"
+                                       "Relance le jeu : il apparaît après les personnages du jeu.", parent=win)
+            self.status.set(f"Mod importé : {r['name']}")
+
+        def do_remove():
+            sel = tree.selection()
+            if not sel:
+                return
+            folder = sel[0]
+            if folder.startswith(importer.OURS):
+                messagebox.showinfo(TITLE, "Ce personnage vient d'un pack de l'outil : il se retire avec « Retirer "
+                                           "du jeu » ou en le supprimant du pack.", parent=win)
+                return
+            if not messagebox.askyesno(TITLE, f"Retirer « {folder} » du jeu ?\n(Seule la copie du jeu est effacée : "
+                                              "le dossier ou le zip d'origine reste où il était.)", parent=win):
+                return
+            try:
+                importer.remove(self.game, folder)
+            except (importer.ImportError_, OSError) as e:
+                messagebox.showerror(TITLE, str(e), parent=win)
+            fill()
+
+        row = ttk.Frame(box, style="Panel.TFrame")
+        row.pack(fill="x", pady=(px(12), 0))
+        ttk.Button(row, text="Importer un dossier…", style="Accent.TButton",
+                   command=lambda: do_import(False)).pack(side="left")
+        ttk.Button(row, text="Importer un zip…", command=lambda: do_import(True)).pack(side="left", padx=px(8))
+        ttk.Button(row, text="Retirer", command=do_remove).pack(side="left")
+        ttk.Button(row, text="Fermer", command=win.destroy).pack(side="right")
+        win.bind("<Escape>", lambda e: win.destroy())
+        fill()
+        self.mods_dialog = win
+        win.update_idletasks()
+        w, h = win.winfo_reqwidth(), win.winfo_reqheight()
+        win.geometry(f"+{self.winfo_rootx() + (self.winfo_width() - w) // 2}+{self.winfo_rooty() + px(80)}")
+        win.attributes("-alpha", 0.0)
+        win.deiconify()
+        win.after(20, lambda: ui.dark_title(win, show=not getattr(ui.Picker, "HIDDEN", False)))
 
     def delete_added(self):
         c = self.chara

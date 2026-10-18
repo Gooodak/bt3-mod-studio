@@ -23,6 +23,11 @@ jeu : ils ne partent pas avec l'outil quand tu le donnes à un ami).
   personnage du jeu : il ne remplace personne. Il apparaît en bas de la liste (« ＋ … ») et se règle comme les
   autres : son nom et sa forme (onglet Personnage), ses attaques, ses valeurs. Il demande l'**édition étendue** du
   port (plus bas).
+- **Mods de personnages…** (sous « Ajouter un personnage ») : importer un personnage fait par la communauté (un
+  dossier ou un zip de fichiers du jeu : « Vegeta(1733).unk », « …_1p.pak »…). L'outil reconnaît chaque fichier,
+  devine le personnage dont il part, et l'installe dans le dossier `characters` du jeu ; il apparaît en plus dans la
+  grille (édition étendue). La même fenêtre liste les mods installés, les retire, et donne leur **empreinte** : pour
+  jouer en ligne, elle doit être la même chez tous.
 - **À droite**, le personnage choisi tel qu'il apparaît à l'écran de sélection du jeu.
 - **Au milieu**, son nom, un résumé (vie, ki, blast stocks, Ultime) et les onglets :
   - **Personnage** :

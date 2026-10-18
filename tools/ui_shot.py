@@ -128,6 +128,15 @@ def main(out, steps):
             app.refresh_list()
             app.select(studio.ADDED + len(app.added()) - 1)
             app._refresh_row()
+        elif cmd == "mods":  # the character mods window
+            ui.Picker.HIDDEN = True
+            app.open_mods()
+            d = app.mods_dialog
+            for _ in range(10):
+                app.update()
+                time.sleep(0.02)
+            capture(int(d.wm_frame(), 16), os.path.join(out, "mods.png"))
+            d.destroy()
         elif cmd == "zoom":
             app.set_zoom(float(arg), save=False)  # (the person's own setting is left as it is)
         elif cmd == "focus":  # the keyboard's focus on a tab button (its orange border)

@@ -61,6 +61,10 @@ Un **pack**, c'est l'ensemble de tes changements. Dans l'outil :
   - **Stats**, **Rafales de ki**, **Déplacements** : vie, ki, puissance, vitesses.
 - **Ajouter un personnage** (édition étendue) : bouton **＋ Ajouter un personnage**, choisis de qui il part, puis
   règle-le comme les autres.
+- **Importer un personnage de la communauté** (édition étendue) : bouton **Mods de personnages…** →
+  **Importer un dossier…** ou **Importer un zip…**. Pour jouer en ligne, tout le monde doit avoir importé les mêmes
+  mods : comparez l'**empreinte** affichée dans cette fenêtre (et envoyez-vous les fichiers du mod, ils ne passent
+  pas dans le code de partage).
 - **▶ Appliquer au jeu** (ou F5) : écrit le pack dans le jeu. **Ferme le jeu avant**, relance-le après.
 - **Retirer du jeu** : le jeu redevient l'original.
 
