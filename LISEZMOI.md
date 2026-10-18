@@ -19,6 +19,10 @@ jeu : ils ne partent pas avec l'outil quand tu le donnes à un ami).
 
 - **À gauche**, les 161 personnages avec leur portrait. Tape un nom, une attaque (« kamehameha ») ou un numéro pour
   chercher. **Modifiés** ne montre que les personnages changés dans ton pack.
+- **＋ Ajouter un personnage** (sous la recherche) crée un personnage **en plus** dans la grille, à partir d'un
+  personnage du jeu : il ne remplace personne. Il apparaît en bas de la liste (« ＋ … ») et se règle comme les
+  autres : son nom et sa forme (onglet Personnage), ses attaques, ses valeurs. Il demande l'**édition étendue** du
+  port (plus bas).
 - **À droite**, le personnage choisi tel qu'il apparaît à l'écran de sélection du jeu.
 - **Au milieu**, son nom, un résumé (vie, ki, blast stocks, Ultime) et les onglets :
   - **Personnage** :
@@ -74,14 +78,31 @@ jeu : ils ne partent pas avec l'outil quand tu le donnes à un ami).
   façon de garder ou d'envoyer un pack. Une étoile dans la barre de titre signale un pack pas encore enregistré ;
   l'outil propose de l'enregistrer avant de fermer.
 
+## Les deux éditions du port
+
+- **L'édition officielle** (celle de z3xox, github.com/z3xox/Tenkaichi3Decomp) : tout ce que fait l'outil marche
+  hors ligne, **sauf les personnages ajoutés**. En ligne, son menu « Tenkaichi Budokai Online » refuse un jeu
+  moddé.
+- **L'édition étendue** (celle de BT3 Mod Studio : la même, plus deux choses) :
+  - les **personnages ajoutés** (jusqu'à 57), grâce aux « paquets de personnages » que z3xox prépare ;
+  - le **jeu en ligne avec des mods**, entre joueurs qui ont **exactement le même pack** (voir ci-dessous).
+
+  Elle s'installe par-dessus le jeu comme une mise à jour (le zip ne contient aucune donnée du jeu : chacun garde
+  les siennes).
+
 ## Jouer en ligne ensemble
 
 En ligne, le jeu n'échange que les boutons pressés : chaque joueur calcule le combat chez lui. **Tous les
-joueurs doivent donc appliquer exactement le même pack**, sinon le combat se désynchronise. Le jeu ne le vérifie
-pas encore lui-même.
+joueurs doivent donc appliquer exactement le même pack**, sinon le combat se désynchronise.
+
+Avec l'édition étendue, le jeu le vérifie lui-même : à la connexion, les deux jeux comparent l'empreinte de leurs
+données (mods et personnages ajoutés compris). Différentes, le match ne démarre pas et le jeu dit « version ou mods
+différents ». Dans F1 > Online, « Your game data » montre cette empreinte : comparez-la entre amis.
+Pour se connecter : F1 > Online, l'un héberge sur un port, l'autre rejoint son adresse (un réseau virtuel comme
+Radmin VPN ou Tailscale évite d'ouvrir un port). Les codes de salon du menu en ligne demandent un service à nous,
+pas encore installé.
 
 ## Pas encore possible
 
-- Ajouter un 162e personnage. Pour l'instant on remplace un personnage existant (onglet Personnage).
 - Changer les fusions (elles restent celles du personnage copié).
 - Mélanger des voix : une copie parle avec la voix du personnage copié.

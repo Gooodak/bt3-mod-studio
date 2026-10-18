@@ -15,7 +15,12 @@
       "transforms": [{"to": 2, "cost": 1}, null, null, null],  # R3 + left / up / right / down (forms.py)
       "forms": [0, 2]                               # the forms its cell of the grid offers (it heads one)
     }
-  }
+  },
+  "added": [                                        # characters ADDED to the roster (the extended edition of
+    {"name": "Vegeta X", "form": "Super Saiyan",    # the port: a character package each, game.build_added)
+     "base": 31,                                    # the disc character it is made from (and stands on)
+     "fields": {...}, "texts": {...}, "transplants": [...], "transforms": [...]}   # as above
+  ]
 }
 Friends who load the same pack get byte-identical files, which online play needs. A pack also travels as
 a text code (to_code / from_code) and has a short fingerprint to compare before playing online.
@@ -35,6 +40,7 @@ def load(path):
     if pack.get("format") != FORMAT:
         raise ValueError("ce fichier n'est pas un pack BT3 Mod Studio")
     pack.setdefault("characters", {})
+    pack.setdefault("added", [])
     return pack
 
 
@@ -48,6 +54,13 @@ def chara(pack, n):
     return pack["characters"].setdefault(str(n), {"fields": {}, "texts": {}})
 
 
+def add(pack, base, name):
+    """A new added character made from disc character `base`; returns it."""
+    entry = {"name": name, "base": int(base), "fields": {}, "texts": {}}
+    pack.setdefault("added", []).append(entry)
+    return entry
+
+
 def clean(pack):
     """Drops characters without any change."""
     for k in list(pack["characters"]):
@@ -57,6 +70,10 @@ def clean(pack):
                 and "base" not in c and not c.get("menuName") and "menuForm" not in c
                 and c.get("transforms") is None and not c.get("forms")):
             del pack["characters"][k]
+    for c in pack.get("added", []):  # (an added character always counts, changed or not)
+        c["texts"] = {lang: r for lang, r in c.get("texts", {}).items() if r}
+    if not pack.get("added"):
+        pack.pop("added", None)  # (a pack without any keeps its code and its mark of before)
     return pack
 
 
@@ -93,6 +110,7 @@ def from_code(text):
     if not isinstance(pack, dict) or pack.get("format") != FORMAT:
         raise ValueError("ce code ne contient pas un pack BT3 Mod Studio")
     pack.setdefault("characters", {})
+    pack.setdefault("added", [])
     return pack
 
 
@@ -101,6 +119,7 @@ def fingerprint(pack):
     same mark get the same game files, which online play needs."""
     import hashlib
     p = clean(json.loads(json.dumps(pack)))
-    body = json.dumps(p.get("characters", {}), sort_keys=True, separators=(",", ":")).encode("utf-8")
+    what = p.get("characters", {}) if not p.get("added") else {"characters": p["characters"], "added": p["added"]}
+    body = json.dumps(what, sort_keys=True, separators=(",", ":")).encode("utf-8")
     h = hashlib.sha256(body).hexdigest().upper()
     return h[:4] + "-" + h[4:8]

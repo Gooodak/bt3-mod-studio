@@ -158,6 +158,16 @@ void Port_TestkitSetupBattle(void) {
     extern void Port_FileCacheFlush(void); /* plat_fcache.c: read the files as they are now */
     extern void Common_Reload(void);       /* src/sys/common.c */
     Port_FileCacheFlush();
+    {   /* The second archive (pzs3us2: voice lines, and an added character's voice banks) is registered on the
+           menus' way, which the kit skips: registered here (src/sys/file.c). */
+        extern int File_IsPartitionLoaded(int pt);
+        extern int File_LoadPartitionNw(int pt);
+        extern int File_WaitPartition(int pt);
+        if (!File_IsPartitionLoaded(2)) {
+            File_LoadPartitionNw(2);
+            File_WaitPartition(2);
+        }
+    }
     /* The common files (2..4: among them the character table with health, starting ki and blast stocks) are read
        once at start-up by Game_Main; read them again so that a mod of them counts from this battle on. */
     Common_Reload();

@@ -375,6 +375,71 @@ class Game:
             out.append((k, pak.write(entries), limit, what))
         return out
 
+    # ---- added characters (the extended edition of the port: character packages) -------------------------------
+    def characters_dir(self):
+        """The folder the extended edition reads character packages from: `characters` next to the game."""
+        return os.path.join(os.path.dirname(os.path.abspath(self.root)), "characters")
+
+    def edition(self):
+        """Which port is installed next to the data: "etendu" (BT3 Mod Studio's edition: added characters, online
+        with the same mods), "officielle", or None when no program is found."""
+        if "edition" not in self._cache:
+            found = None
+            for exe in ("Tenkaichi3Decomp.exe", "bt3.exe", "Tenkaichi3Decomp", "bt3"):
+                path = os.path.join(os.path.dirname(os.path.abspath(self.root)), exe)
+                try:
+                    with open(path, "rb") as f:
+                        found = "etendu" if b"plays games with the same data only" in f.read() else "officielle"
+                    break
+                except OSError:
+                    continue
+            self._cache["edition"] = found
+        return self._cache["edition"]
+
+    @staticmethod
+    def added_folder(n, entry):
+        """The package folder of added character n (0-based) of a pack. The game reads the folders in the order of
+        their names, which gives the added characters their ids: two players with the same pack get the same."""
+        name = "".join(ch for ch in str(entry.get("name", "")) if ch.isalnum() or ch in " -_()'.")[:40].strip()
+        return f"BT3MS {n + 1:02d} {name or 'Personnage'}"
+
+    def build_added(self, entry, pack=None):
+        """{file name: bytes} of the package folder of an added character (pack key "added"): its costumes made
+        from its base character's with the entry's changes (values, move names, grafted attacks, transformations),
+        the animations and effects when attacks were grafted (else the base's are used), and character.txt (name,
+        form, base, health, ki, blast stocks). Its pictures and voice are its base's (the game's rule)."""
+        from . import roster
+        base = int(entry.get("base", -1))
+        if not 0 <= base < CHARA_COUNT:
+            raise ModError(f"personnage ajouté « {entry.get('name', '')} » : personnage de base inconnu {base}")
+        change = {k: v for k, v in entry.items() if k not in ("base", "name", "form")}
+        built = self.build_character(base, change, None)
+        first = CHARA_FIRST + base * 10
+        stem = "chara"
+        files = {}
+        for idx, _ in self.costumes(base):
+            k = idx - first
+            rel = "pzs3us1/%05d.bin" % idx
+            name = f"{stem}_{k + 1}p.pak" if k < 4 else f"{stem}_{k - 3}p_dmg.pak"
+            files[name] = built.get(rel) or self.original(idx)
+        for k, suffix in ((8, "_anm.pak"), (9, "_eff.pak")):
+            rel = "pzs3us1/%05d.bin" % (first + k)
+            if rel in built:
+                files[stem + suffix] = built[rel]
+        lines = ["# Fait avec BT3 Mod Studio" + (f" (pack « {pack.get('name', '')} »)" if pack else ""),
+                 "format=1", f"name={entry.get('name') or roster.name(base)}", f"base={base}"]
+        if "form" in entry:
+            lines.append(f"form={entry['form']}")
+        if pack and pack.get("author"):
+            lines.append(f"author={pack['author']}")
+        values = entry.get("fields", {})
+        for key, out, lo, hi in (("roster.health", "health", 10000, 150000), ("roster.kiStart", "ki", 0, 100000),
+                                 ("roster.stocks", "blast", 0, 7)):
+            if key in values:
+                lines.append(f"{out}={max(lo, min(hi, int(values[key])))}")
+        files["character.txt"] = ("\n".join(lines) + "\n").encode("utf-8")
+        return files
+
     def build_roster(self, pack):
         """The shared character table with every character's roster fields (and the rows of copied characters),
         or None when the pack changes none. Patched in place (same size), so nothing else in the file moves."""
@@ -450,6 +515,12 @@ class Game:
         if roster is not None:
             built["pzs3us1/%05d.bin" % fields.ROSTER_FILE] = roster
         built.update(self.build_menus(pack))
+        packages = {self.added_folder(n, e): self.build_added(e, pack) for n, e in enumerate(pack.get("added", []))}
+        old_pkgs = set(self.manifest().get("packages", []))
+        for folder in packages:
+            if os.path.exists(os.path.join(self.characters_dir(), folder)) and folder not in old_pkgs:
+                raise ModError(f"characters/{folder} existe déjà et ne vient pas de cet outil : retire-le à la main "
+                               "d'abord")
         old = set(self._manifest_paths())
         for rel in built:
             if os.path.exists(os.path.join(self.mods_root, rel)) and rel not in old:
@@ -462,8 +533,14 @@ class Game:
             with open(path, "wb") as f:
                 f.write(data)
             written.append(rel)
-        self._save_manifest({"files": written, "pack": pack.get("name", "")})
-        return len(written)
+        for folder, files in sorted(packages.items()):
+            d = os.path.join(self.characters_dir(), folder)
+            os.makedirs(d, exist_ok=True)
+            for name, data in files.items():
+                with open(os.path.join(d, name), "wb") as f:
+                    f.write(data)
+        self._save_manifest({"files": written, "packages": sorted(packages), "pack": pack.get("name", "")})
+        return len(written) + sum(len(f) for f in packages.values())
 
     def _manifest_paths(self):
         # (an older manifest names pzs3us1 files without their folder)
@@ -471,11 +548,17 @@ class Game:
 
     def remove(self):
         """Deletes the files this tool wrote. Returns how many."""
+        import shutil
         n = 0
         for rel in self._manifest_paths():
             p = os.path.join(self.mods_root, rel)
             if os.path.exists(p):
                 os.remove(p)
                 n += 1
+        for folder in self.manifest().get("packages", []):  # (only the folders this tool wrote, by their names)
+            d = os.path.join(self.characters_dir(), folder)
+            if folder.startswith("BT3MS ") and os.path.isdir(d):
+                n += len(os.listdir(d))
+                shutil.rmtree(d, ignore_errors=True)
         self._save_manifest({"files": []})
         return n

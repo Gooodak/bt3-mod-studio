@@ -1,6 +1,6 @@
 """Screenshots of the tool's own window, to check the interface without a person at the screen.
     py -I tools/ui_shot.py OUT_DIR STEP ...
-Steps: select:N  tab:NAME  set:KEY=VALUE  base:N  menu:N=TEXT  graft:SLOT=FROM/FROMSLOT  skill:SLOT=FROM/FROMSLOT  search:TEXT
+Steps: add:BASE=NAME  select:N  tab:NAME  set:KEY=VALUE  base:N  menu:N=TEXT  graft:SLOT=FROM/FROMSLOT  skill:SLOT=FROM/FROMSLOT  search:TEXT
        scroll:FRACTION  picker  share  help  zoom:SCALE  focus:TAB  shot:NAME  wait:MS  size:WxH
 The window is fully transparent (PrintWindow still gets its picture), so nothing shows on the desktop."""
 import ctypes
@@ -122,6 +122,12 @@ def main(out, steps):
                 time.sleep(0.02)
             capture(int(p.wm_frame(), 16), os.path.join(out, "picker.png"))
             p.destroy()
+        elif cmd == "add":  # an added character made from BASE (=NAME), shown
+            base, _, name = arg.partition("=")
+            modpack.add(app.pack, int(base), name or "Nouveau")
+            app.refresh_list()
+            app.select(studio.ADDED + len(app.added()) - 1)
+            app._refresh_row()
         elif cmd == "zoom":
             app.set_zoom(float(arg), save=False)  # (the person's own setting is left as it is)
         elif cmd == "focus":  # the keyboard's focus on a tab button (its orange border)

@@ -105,6 +105,31 @@ def main():
     app.show_tab("Personnage")
     pump(app)
 
+    # an added character (the extended edition): made from Vegeta, 7 bars of health, Super Vegeta's Big Bang as its
+    # Ultimate; its name typed in the Personnage page
+    modpack.add(app.pack, 31, "Vegeta (nouveau)")
+    app.refresh_list()
+    added = studio.ADDED + len(app.added()) - 1
+    app.select(added)
+    app.show_tab("Personnage")
+    pump(app)
+    app.menu_vars["menuName"].set("Vegeta X")
+    app.show_tab("Stats")
+    pump(app)
+    app.rows["roster.health"].var.set("70000")
+    app.rows["roster.kiStart"].var.set("100000")  # (an Ultimate needs ki)
+    app._set_graft("super", 2, 33, 0)
+    pump(app)
+    e = app.added()[-1]
+    check("an added character made in the window", e.get("name") == "Vegeta X" and e.get("base") == 31
+          and e["fields"].get("roster.health") == 70000 and e["fields"].get("roster.kiStart") == 100000
+          and e.get("transplants") == [{"slot": 2, "from": 33,
+                                                                                      "fromSlot": 0}]
+          and "＋ Vegeta X" in app._row_text(added), str({k: e[k] for k in e if k != "texts"}))
+    app.select(152)
+    app.show_tab("Personnage")
+    pump(app)
+
     expect = {"base": 31, "transplants": [{"slot": 2, "from": 33, "fromSlot": 0},
                                           {"kind": "skill", "slot": 1, "from": 0, "fromSlot": 0}],
               "fields": {"roster.health": 60000, "roster.kiStart": 100000, "param.blastGain": 1000000,
@@ -139,8 +164,9 @@ def main():
 
     # in the test game: the copy's health and Ultimate damage, then R3 + right to Goku (End) Super Saiyan 3
     t = time.time()
-    kit.ensure()
+    kit.stop()  # (the game reads the folder of added characters when it starts)
     kit.apply(path)
+    kit.ensure()
     r = kit.experiment(["ultimate"], p0=152, p1=11, settle=600)
     hits = [d for s, d in r.get("hits", []) if s == "p1"]
     st = r.get("state", {}).get("p0", {})
@@ -150,6 +176,12 @@ def main():
                     "sync", "wait 200", "speed normal", "state"])
     seen = [kit.parse_state(l)["p0"].get("chara") for l in ans.splitlines() if l.startswith("state")]
     check("in the game: R3 + right turns into Goku (End) SSJ3", seen == ["6"], f"chara {seen}")
+    r = kit.experiment(["ultimate"], p0=198, p1=11, settle=600)  # (198: the first added character)
+    hits = [d for s, d in r.get("hits", []) if s == "p1"]
+    st = r.get("state", {}).get("p0", {})
+    check("in the game: the added character, 70000 and the Big Bang", st.get("chara") == "198" and
+          st.get("hp", "").endswith("/70000") and len(hits) == 4, f"chara {st.get('chara')}, hp {st.get('hp')}, "
+                                                                   f"{len(hits)} hits = {sum(hits)}")
     kit.apply("--none")
     kit.stop()  # (the test game is closed at the end)
     print(f"\n{sum(RESULTS)}/{len(RESULTS)} passed")

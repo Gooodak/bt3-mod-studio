@@ -21,6 +21,7 @@ SPECIALS = [("Blast 1 n°1", "skill", 0, 0), ("Blast 1 n°2", "skill", 1, 1), ("
 KIBLAST_COLS = [("damage", "Dégâts"), ("guardDamage", "Si gardé"), ("ki", "Coût en ki"), ("speed", "Vitesse"),
                 ("turn", "Guidage"), ("time", "Durée"), ("hits", "Coups")]
 PAGES = ["Personnage", "Attaques", "Stats", "Rafales de ki", "Déplacements"]
+ADDED = 1000  # the list's id of the pack's added character n is ADDED + n (the game gives it 198 + n or so)
 MAIN_WIDTH = 680  # the width the pages need (1/96 inch at the normal text size): narrower, the large picture goes
 
 
@@ -335,6 +336,11 @@ class Studio(tk.Tk):
         self.seg_mod.pack(side="left", padx=(px(4), 0))
         self.count_lbl = ttk.Label(seg, text="", style="Panel.Muted.TLabel")
         self.count_lbl.pack(side="right", padx=px(4))
+        add = ttk.Button(side, text="＋  Ajouter un personnage", command=self.add_character)
+        add.pack(fill="x", pady=(0, px(8)))
+        ui.Tooltip(add, "Un personnage EN PLUS dans la grille, fait à partir d'un personnage du jeu : ses attaques, "
+                        "ses valeurs et son nom se changent ensuite comme pour les autres. Il demande l'édition "
+                        "étendue du port.")
         self.list = ui.CharList(side, self.names, self.icons, on_select=self._on_list)
         self.list.pack(fill="both", expand=True)
 
@@ -641,17 +647,57 @@ class Studio(tk.Tk):
 
 
     # ---- character list ----------------------------------------------------------------------------------------
+    @staticmethod
+    def is_added(c):
+        return c is not None and c >= ADDED
+
+    def added(self):
+        return self.pack.get("added", [])
+
+    def all_ids(self):
+        return list(range(game.CHARA_COUNT)) + [ADDED + n for n in range(len(self.added()))]
+
+    def name_of(self, c):
+        """The name a character goes by in the window (an added one: the name it was given)."""
+        if self.is_added(c):
+            e = self.added()[c - ADDED]
+            return e.get("name") or self.names[int(e["base"])]
+        return self.names[c]
+
+    def entry(self):
+        """The selected character's changes in the pack, made when there are none yet (to be written to)."""
+        if self.is_added(self.chara):
+            return self.added()[self.chara - ADDED]
+        return modpack.chara(self.pack, self.chara)
+
+    def eng(self, c=None):
+        """(id, changes) as the game engine takes them: an added character is its base character with its changes
+        (as its package is built: game.build_added)."""
+        c = self.chara if c is None else c
+        if self.is_added(c):
+            e = self.added()[c - ADDED]
+            return int(e["base"]), {k: v for k, v in e.items() if k not in ("base", "name", "form")}
+        return c, self.pack["characters"].get(str(c), {})
+
     def base_of(self, c):
+        if self.is_added(c):
+            return int(self.added()[c - ADDED]["base"])
         ch = self.pack["characters"].get(str(c), {})
         return int(ch["base"]) if "base" in ch else c
 
     def is_changed(self, c):
+        if self.is_added(c):
+            return True
         ch = self.pack["characters"].get(str(c), {})
         return bool(ch.get("fields") or any(ch.get("texts", {}).values()) or ch.get("transplants") or "base" in ch
                     or ch.get("menuName") or ch.get("menuForm") or ch.get("transforms") is not None
                     or ch.get("forms") or ch.get("nickname"))
 
     def _row_text(self, c):
+        if self.is_added(c):
+            e = self.added()[c - ADDED]
+            return f"  ＋ {self.name_of(c)}" + (f" – {e['form']}" if e.get("form") else "") + \
+                f"   (à partir de {self.names[int(e['base'])]})"
         ch = self.pack["characters"].get(str(c), {})
         text = "  " + self.names[c]
         if "base" in ch:
@@ -665,6 +711,8 @@ class Studio(tk.Tk):
         return text
 
     def _row_tags(self, c):
+        if self.is_added(c):
+            return ("added",)
         if "base" in self.pack["characters"].get(str(c), {}):
             return ("rep",)
         return ("mod",) if self.is_changed(c) else ()
@@ -682,16 +730,16 @@ class Studio(tk.Tk):
                 return False
             if not q:
                 return True
-            hay = self._row_text(c).lower() + " %03d %d" % (c, c)
+            hay = self._row_text(c).lower() + ("" if self.is_added(c) else " %03d %d" % (c, c))
             if self.moves:
-                hay += " " + " ".join(self.moves[c]).lower()
+                hay += " " + " ".join(self.moves[self.base_of(c)]).lower()
             return q in hay
-        ids = [c for c in range(game.CHARA_COUNT) if match(c)]
+        ids = [c for c in self.all_ids() if match(c)]
         self.list.icons = {c: self.icon(c) for c in ids}
         self.list.fill(ids, self._row_text, self._row_tags)
         if self.chara in ids:
             self.list.select(self.chara)
-        n = sum(1 for c in range(game.CHARA_COUNT) if self.is_changed(c))
+        n = sum(1 for c in self.all_ids() if self.is_changed(c))
         self.seg_mod.configure(text=f"Modifiés ({n})")
         self.count_lbl.configure(text=f"{len(ids)} affichés")
 
@@ -706,7 +754,7 @@ class Studio(tk.Tk):
         if str(c) in self.list.tree.get_children():
             kw = {"image": self.icon(c)} if self.icon(c) is not None else {}
             self.list.tree.item(str(c), text=self._row_text(c), tags=self._row_tags(c), **kw)
-        n = sum(1 for k in range(game.CHARA_COUNT) if self.is_changed(k))
+        n = sum(1 for k in self.all_ids() if self.is_changed(k))
         self.seg_mod.configure(text=f"Modifiés ({n})")
         self._header()
         self._dirty()
@@ -717,6 +765,8 @@ class Studio(tk.Tk):
 
     # ---- the selected character --------------------------------------------------------------------------------
     def ch(self):
+        if self.is_added(self.chara):
+            return self.added()[self.chara - ADDED]
         return self.pack["characters"].get(str(self.chara), {})
 
     def chara_fields(self):
@@ -728,7 +778,7 @@ class Studio(tk.Tk):
     def select(self, c):
         """Shows character c: the widgets stay, only what they show changes (no page is made again)."""
         self.chara = c
-        self.orig = self.game.start_values(c, self.ch())  # (what the slot holds before its numbers change)
+        self.orig = self.game.start_values(*self.eng(c))  # (what the slot holds before its numbers change)
         self.loading = True
         self.nick_var.set(self.ch().get("nickname", ""))
         self.loading = False
@@ -750,11 +800,16 @@ class Studio(tk.Tk):
     def _header(self):
         c, ch = self.chara, self.ch()
         base = self.base_of(c)
-        self.title_var.set(self.names[c] + (f"   →   {self.names[base]}" if base != c else ""))
-        self.badge_num.configure(text=f"n°{c:03d}")
+        if self.is_added(c):
+            self.title_var.set(self.name_of(c))
+            self.badge_num.configure(text=f"ajouté n°{c - ADDED + 1}")
+            self.badge_rep.configure(text=f"À partir de {self.names[base]}")
+        else:
+            self.title_var.set(self.names[c] + (f"   →   {self.names[base]}" if base != c else ""))
+            self.badge_num.configure(text=f"n°{c:03d}")
+            if base != c:
+                self.badge_rep.configure(text=f"Remplacé par {self.names[base]}")
         badges = (base != c, self.is_changed(c))
-        if base != c:
-            self.badge_rep.configure(text=f"Remplacé par {self.names[base]}")
         if badges != self.badges:  # (packed again only when one appears or goes)
             for b in (self.badge_rep, self.badge_mod):
                 b.pack_forget()
@@ -764,7 +819,7 @@ class Studio(tk.Tk):
                 self.badge_mod.pack(side="left")
             self.badges = badges
         hp, ki, st = (self.value(k) for k in ("roster.health", "roster.kiStart", "roster.stocks"))
-        names = self.game.start_move_names(c, ch)
+        names = self.game.start_move_names(*self.eng(c))
         facts = [plural(round(hp / fields.HP_BAR, 1), "barre").replace(".", ",") + " de vie",
                  "ki au départ : " + plural(round(ki / fields.KI_BAR, 1), "barre").replace(".", ","),
                  plural(st, "blast stock")]
@@ -861,7 +916,9 @@ class Studio(tk.Tk):
                            width=w - px(28), tags="form")
         name, _, form = self.names[base].partition(" – ")
         ch = self.ch()
-        if ch.get("menuName"):
+        if self.is_added(self.chara):
+            name, form = self.name_of(self.chara), ch.get("form", form)
+        elif ch.get("menuName"):
             name, form = ch["menuName"], ch.get("menuForm", form)
         cv.itemconfigure("face", image=img if img is not None else "")
         cv.itemconfigure("name", text=name)
@@ -920,12 +977,13 @@ class Studio(tk.Tk):
         Tk lays out a page again when something moves, and that is what makes a click slow."""
         w = self.idw = {}
         box = ui.card(inner, "Remplacer ce personnage", "un nouveau personnage à cette place", accent=True)
+        w["base_box"] = box
         w["base_hint"] = ui.note(box, 3)
         row = ttk.Frame(box, style="Card.TFrame")
         row.pack(anchor="w", pady=(px(4), 0))
         w["base"] = CharButton(self, row, "Personne (l'original) — choisir…", self._on_base)
         w["base"].b.pack(side="left")
-        w["unbase"] = ttk.Button(row, text="", style="Link.TButton", width=24, command=lambda: self._set_base(None))
+        w["unbase"] = ttk.Button(row, text="", style="Link.TButton", width=32, command=lambda: self._set_base(None))
         w["unbase"].pack(side="left", padx=px(10))
 
         box = ui.card(inner, "Nom dans les menus", "écran de sélection")
@@ -997,22 +1055,34 @@ class Studio(tk.Tk):
     def _refresh_identity(self):
         w, c, ch = self.idw, self.chara, self.ch()
         base = int(ch["base"]) if "base" in ch else None
-        ui.set_note(w["base_hint"], f"Le personnage choisi prend la place de {self.names[c]} tout entier : modèle, "
-                                    "attaques, voix, portraits et nom dans les menus. L'original n'est plus jouable "
-                                    "tant que le pack est appliqué. Les réglages des autres onglets partent du "
-                                    "personnage choisi.")
+        added = self.is_added(c)
+        if added:
+            w["base_box"].title.configure(text="Fait à partir de")
+            w["base_box"].sub.configure(text="un personnage EN PLUS dans la grille (édition étendue)")
+            ui.set_note(w["base_hint"], f"{self.name_of(c)} est un personnage ajouté : il a sa propre case, après "
+                                        "ceux du jeu, et ne remplace personne. Il part de ce personnage-ci (modèle, "
+                                        "animations, voix, portraits) ; ses attaques, ses valeurs et son nom se "
+                                        "changent dans les autres onglets. Il demande l'édition étendue du port.")
+            w["unbase"].configure(text="Supprimer ce personnage ajouté", state="normal")
+        else:
+            w["base_box"].title.configure(text="Remplacer ce personnage")
+            w["base_box"].sub.configure(text="un nouveau personnage à cette place")
+            ui.set_note(w["base_hint"], f"Le personnage choisi prend la place de {self.names[c]} tout entier : "
+                                        "modèle, attaques, voix, portraits et nom dans les menus. L'original n'est "
+                                        "plus jouable tant que le pack est appliqué. Les réglages des autres onglets "
+                                        "partent du personnage choisi.")
+            w["unbase"].configure(text="Retirer le remplacement" if base is not None else "",
+                                  state="normal" if base is not None else "disabled")
         w["base"].set(base)
-        w["unbase"].configure(text="Retirer le remplacement" if base is not None else "",
-                              state="normal" if base is not None else "disabled")
 
         own_name, own_form = self.names[base if base is not None else c].partition(" – ")[::2]
         self.menu_current = {"menuName": own_name, "menuForm": own_form}
         for key, var in self.menu_vars.items():
-            var.set(ch.get(key, ""))
+            var.set(ch.get(self._menu_key(key), ""))
             self._menu_count(key)
 
         try:
-            slots = self.game.transforms(c, ch, self.pack)
+            slots = self.game.transforms(*self.eng(c), self.pack)
         except game.ModError:
             slots = forms.read(self.game.params(base if base is not None else c))
         for i, r in enumerate(self.tr_rows):
@@ -1030,7 +1100,11 @@ class Studio(tk.Tk):
         w["tr_auto"].configure(text="Revenir aux transformations automatiques" if explicit else "",
                                state="normal" if explicit else "disabled")
 
-        if "grid" not in self.game._cache and menunames.cached(self.game.root, game.tool_folder()) is None:
+        if added:
+            ui.set_note(w["forms_hint"], "Un personnage ajouté a sa propre case ; les personnages en qui il se "
+                                         "transforme (ci-dessus) sont proposés dans cette case.")
+            shown, editable = [], False
+        elif "grid" not in self.game._cache and menunames.cached(self.game.root, game.tool_folder()) is None:
             ui.set_note(w["forms_hint"], "Lecture de la grille du jeu… (une seule fois)")
             shown, editable = [], False
         elif self.game.heads_cell(c):
@@ -1059,6 +1133,11 @@ class Studio(tk.Tk):
     def _on_base(self):
         c = self.chara
         cur = int(self.ch()["base"]) if "base" in self.ch() else None
+        if self.is_added(c):
+            new = self._pick(f"{self.name_of(c)} : à partir de quel personnage ?", current=cur)
+            if new is not None and new != ui.Picker.NONE:
+                self._set_base(new)
+            return
         new = self._pick(f"Mettre un personnage à la place de {self.names[c]}", current=cur,
                          allow_none="Garder l'original", exclude=(c,))
         if new is None:
@@ -1066,7 +1145,10 @@ class Studio(tk.Tk):
         self._set_base(None if new == ui.Picker.NONE else new)
 
     def _set_base(self, new):
-        ch = modpack.chara(self.pack, self.chara)
+        if new is None and self.is_added(self.chara):
+            self.delete_added()
+            return
+        ch = self.entry()
         old = int(ch["base"]) if "base" in ch else None
         if new == old:
             return
@@ -1083,37 +1165,41 @@ class Studio(tk.Tk):
         else:
             ch["base"] = new
         self._reselect()
-        self.status.set(f"{self.names[self.chara]} : " + ("emplacement d'origine" if new is None else
-                                                          f"remplacé par {self.names[new]}"))
+        self.status.set(f"{self.name_of(self.chara)} : " + ("emplacement d'origine" if new is None else
+                                                            f"à partir de {self.names[new]}"))
 
     def _menu_count(self, key):
         n = len(self.menu_vars[key].get())
         self.menu_counts[key].configure(text=(f"{n}/30" if n else f"d'origine : {self.menu_current[key] or '—'}"),
                                         foreground="#ff6b6b" if n > 30 else ui.MUTED)
 
+    def _menu_key(self, key):
+        """An added character's names are its package's own (keys "name", "form"), not menu changes."""
+        return {"menuName": "name", "menuForm": "form"}[key] if self.is_added(self.chara) else key
+
     def _on_menu_name(self, key):
         self._menu_count(key)
         if self.loading:
             return
         text = self.menu_vars[key].get()
-        ch = modpack.chara(self.pack, self.chara)
+        ch = self.entry()
         if text.strip() and len(text) <= 30:
-            ch[key] = text.strip()
-        else:
-            ch.pop(key, None)
+            ch[self._menu_key(key)] = text.strip()
+        elif not (self.is_added(self.chara) and key == "menuName"):
+            ch.pop(self._menu_key(key), None)
         self._refresh_row()
         self._draw_portrait()
 
     def _current_transforms(self):
         try:
-            return forms.chosen(self.game.transforms(self.chara, self.ch(), self.pack))
+            return forms.chosen(self.game.transforms(*self.eng(), self.pack))
         except game.ModError:
             return [None] * forms.SLOTS
 
     def _set_transform(self, i, value):
         t = self._current_transforms()
         t[i] = value
-        modpack.chara(self.pack, self.chara)["transforms"] = t
+        self.entry()["transforms"] = t
         self._reselect()
 
     def _on_transform_pick(self, i):
@@ -1148,7 +1234,7 @@ class Studio(tk.Tk):
         for x in f:
             if x not in out:
                 out.append(x)
-        modpack.chara(self.pack, self.chara)["forms"] = out
+        self.entry()["forms"] = out
         self._reselect()
 
     def _on_form_pick(self, k):
@@ -1158,7 +1244,7 @@ class Studio(tk.Tk):
             self._set_form(k, new)
 
     def _reset_auto(self, key):
-        modpack.chara(self.pack, self.chara).pop(key, None)
+        self.entry().pop(key, None)
         self._reselect()
 
     # -- Attaques: each special move with its name, the attack it may take from another character, its values
@@ -1227,7 +1313,7 @@ class Studio(tk.Tk):
 
     def _refresh_attacks(self):
         c, ch = self.chara, self.ch()
-        names = {lang: self.game.start_move_names(c, ch, lang) for lang, _ in NAME_LANGS}
+        names = {lang: self.game.start_move_names(*self.eng(c), lang) for lang, _ in NAME_LANGS}
         renames = ch.get("texts", {})
         for (lang, idx), item in self.name_vars.items():
             orig = names[lang][idx] if idx < len(names[lang]) else ""
@@ -1255,7 +1341,7 @@ class Studio(tk.Tk):
         if self.loading:
             return
         item = self.name_vars[(lang, i)]
-        texts = modpack.chara(self.pack, self.chara).setdefault("texts", {}).setdefault(lang, {})
+        texts = self.entry().setdefault("texts", {}).setdefault(lang, {})
         name = item["var"].get()
         if name.strip() and name != item["orig"]:
             texts[str(i)] = name
@@ -1285,7 +1371,7 @@ class Studio(tk.Tk):
     def _set_graft(self, kind, slot, src, from_slot=None):
         """Takes attack from_slot of character src as this character's attack `slot` (kind "skill": a Blast 1, else
         a Blast 2 / the Ultimate); src None: keeps its own."""
-        ch = modpack.chara(self.pack, self.chara)
+        ch = self.entry()
         old = ch.get("transplants")
         grafts = [t for k, t in self._grafts().items() if k != (kind, slot)]
         if src is not None:
@@ -1294,7 +1380,8 @@ class Studio(tk.Tk):
                 t = dict(kind="skill", **t)
             grafts.append(t)
             grafts.sort(key=lambda g: (transplant.is_skill(g), int(g["slot"])))
-            problem = self.game.graft_conflict(self.chara, dict(ch, transplants=grafts), t)
+            who, change = self.eng()
+            problem = self.game.graft_conflict(who, dict(change, transplants=grafts), t)
             if problem:
                 messagebox.showwarning(TITLE, problem)
                 if old is not None:
@@ -1379,7 +1466,7 @@ class Studio(tk.Tk):
             row.paint(bad=True)
             self.status.set(f"{f.label} : entre {fmt(f, f.lo)} et {fmt(f, f.hi)}")
             return
-        values = modpack.chara(self.pack, self.chara)["fields"]
+        values = self.entry().setdefault("fields", {})
         o = self.orig[f.key]
         if (abs(v - o) < 1e-4) if f.is_float else v == o:
             values.pop(f.key, None)
@@ -1393,7 +1480,7 @@ class Studio(tk.Tk):
     def _on_nick(self):
         if self.loading:
             return
-        ch = modpack.chara(self.pack, self.chara)
+        ch = self.entry()
         if self.nick_var.get().strip():
             ch["nickname"] = self.nick_var.get().strip()
         else:
@@ -1402,10 +1489,44 @@ class Studio(tk.Tk):
 
     def reset_chara(self):
         if self.is_changed(self.chara) and not messagebox.askyesno(
-                TITLE, f"Effacer tous les changements de {self.names[self.chara]} dans ce pack ?"):
+                TITLE, f"Effacer tous les changements de {self.name_of(self.chara)} dans ce pack ?"
+                       + ("\n(Il reste dans le pack, avec son nom : seuls ses réglages sont effacés.)"
+                          if self.is_added(self.chara) else "")):
             return
-        self.pack["characters"].pop(str(self.chara), None)
+        if self.is_added(self.chara):
+            e = self.entry()
+            for k in [k for k in e if k not in ("base", "name", "form")]:
+                del e[k]
+            e["fields"], e["texts"] = {}, {}
+        else:
+            self.pack["characters"].pop(str(self.chara), None)
         self._reselect()
+
+    def add_character(self):
+        """A new added character, made from a character of the game chosen in the picker."""
+        base = self._pick("Ajouter un personnage : à partir de quel personnage du jeu ?",
+                          current=self.base_of(self.chara) if self.chara is not None else None)
+        if base is None or base == ui.Picker.NONE:
+            return
+        name = self.names[base].partition(" – ")[0] + " (nouveau)"
+        modpack.add(self.pack, base, name[:30])
+        if self.only_mod:
+            self._filter_mod(False)
+        self.refresh_list()
+        self.select(ADDED + len(self.added()) - 1)
+        self.show_tab("Personnage")
+        self._refresh_row()
+        self.status.set(f"Personnage ajouté : {name}. Donne-lui un nom dans « Nom dans les menus », puis change "
+                        "ses attaques et ses valeurs.")
+
+    def delete_added(self):
+        c = self.chara
+        if not messagebox.askyesno(TITLE, f"Supprimer {self.name_of(c)} du pack ?"):
+            return
+        del self.added()[c - ADDED]
+        self.refresh_list()
+        self.select(self.added() and ADDED + min(c - ADDED, len(self.added()) - 1) or 0)
+        self._refresh_row()
 
     # ---- packs and the game ------------------------------------------------------------------------------------
     def _snapshot(self):
@@ -1415,7 +1536,7 @@ class Studio(tk.Tk):
     def _dirty(self):
         snap = self._snapshot()
         self.title(f"{TITLE} — {self.pack['name']}" + (" *" if snap != getattr(self, "saved", snap) else ""))
-        if self.applied is None and not any(self.is_changed(c) for c in range(game.CHARA_COUNT)):
+        if self.applied is None and not any(self.is_changed(c) for c in self.all_ids()):
             self.state_lbl.configure(text="", style="Panel.Muted.TLabel")
         elif snap == self.applied:
             self.state_lbl.configure(text="✓ Appliqué", style="Good.Panel.TLabel")
@@ -1555,9 +1676,15 @@ class Studio(tk.Tk):
             self.refresh_list()
             self._dirty()
             self.status.set(f"Appliqué au jeu : {result['n']} fichier(s) — empreinte {modpack.fingerprint(self.pack)}")
-            messagebox.showinfo(TITLE, f"Pack « {self.pack['name']} » appliqué : {n_chara} personnage(s), "
-                                       f"{result['n']} fichier(s) écrits dans gamedata/mods.\n\n"
+            n_added = len(self.added())
+            messagebox.showinfo(TITLE, f"Pack « {self.pack['name']} » appliqué : {n_chara} personnage(s) modifié(s)"
+                                       + (f", {n_added} ajouté(s) (dossier « characters » à côté du jeu)"
+                                          if n_added else "") + f", {result['n']} fichier(s) écrits.\n\n"
                                        "Lance (ou relance) le jeu pour en profiter.")
+            if n_added and self.game.edition() != "etendu":
+                messagebox.showwarning(TITLE, "Les personnages ajoutés demandent l'édition étendue du port (celle de "
+                                              "BT3 Mod Studio). Le jeu installé est l'édition officielle : il ne les "
+                                              "verra pas. Les autres changements du pack marchent quand même.")
 
         thread = threading.Thread(target=work, daemon=True)
         thread.start()
