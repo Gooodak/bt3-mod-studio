@@ -53,6 +53,48 @@ def running():
     return bool(ok) and code.value == 259  # STILL_ACTIVE
 
 
+def quiet_window():
+    """The test game's window opens without taking the keyboard from the person at the PC (the window's first
+    showing is the one STARTUPINFO names)."""
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 4  # SW_SHOWNOACTIVATE
+    return si
+
+
+def behind(pid, seconds=20):
+    """Puts the window of process `pid` behind every other window, without activating it, as soon as it appears
+    (a thread: it looks for it for `seconds`, and once more a little later, the game may show it again). The game
+    still draws, so screenshots work; it is only out of the way of the person at the PC."""
+    import ctypes
+    import threading
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    proto = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def windows():
+        found = []
+
+        def each(hwnd, _):
+            owner = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+            if owner.value == pid and user32.IsWindowVisible(hwnd):
+                found.append(hwnd)
+            return True
+        user32.EnumWindows(proto(each), 0)
+        return found
+
+    def work():
+        end, pushed = time.time() + seconds, 0
+        while time.time() < end and pushed < 3:
+            found = windows()
+            for hwnd in found:  # HWND_BOTTOM; SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
+                user32.SetWindowPos(hwnd, 1, 0, 0, 0, 0, 0x1 | 0x2 | 0x10)
+            pushed += 1 if found else 0
+            time.sleep(0.05 if not found else 1.0)
+    threading.Thread(target=work, daemon=True).start()
+
+
 def start(quiet=False, menus=False, sound=False):
     """menus=True: the game's own menus run (BT3_TEST_MENUS), on a fresh copy of the test save (tools/testsave)."""
     if running():
@@ -76,7 +118,9 @@ def start(quiet=False, menus=False, sound=False):
         env.update(BT3_TEST_MENUS="1", BT3_SAVES=saves, BT3_NOMOVIE="1")
     log = open(os.path.join(BOX, "game.log"), "w")
     p = subprocess.Popen([EXE], cwd=KIT, env=env, stdout=log, stderr=subprocess.STDOUT,
-                         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
+                         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                         startupinfo=quiet_window())
+    behind(p.pid)
     open(os.path.join(BOX, "pid"), "w").write(str(p.pid))
     open(os.path.join(BOX, "mode"), "w").write("menus" if menus else "battles")
     # Ready when the start-up check of the data is over (until then it holds the mod files open) and the mailbox

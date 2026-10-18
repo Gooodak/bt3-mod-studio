@@ -94,6 +94,8 @@ def main():
           f"page moved {moved:.0f} px, list {combo.get()!r}")
     # the keyboard: Ctrl+↓ the next character of the list, Ctrl+3 the Stats tab, Ctrl+↑ back
     tree = app.list.tree
+    tree.focus_force()  # (Tk gives a key to the widget that has the keyboard: without it, the keys are lost)
+    pump(app)
     tree.event_generate("<Control-Down>")
     tree.event_generate("<Control-Key-3>")
     pump(app)

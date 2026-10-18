@@ -4,7 +4,11 @@ Outil pour modifier les personnages de **Dragon Ball Z Budokai Tenkaichi 3** (US
 [Tenkaichi3Decomp](https://github.com/z3xox/Tenkaichi3Decomp) : stats, attaques reprises d'autres personnages,
 personnages copiés à la place d'un autre, transformations, formes de la grille de sélection, noms dans les menus.
 
-**Mode d'emploi pour les joueurs : [LISEZMOI.md](LISEZMOI.md).**
+**Nouveau ? Commence par le [GUIDE.md](GUIDE.md)** : installer le jeu (édition officielle ou étendue), l'outil, et
+jouer en ligne ensemble avec les mêmes mods. **Mode d'emploi détaillé de la fenêtre : [LISEZMOI.md](LISEZMOI.md).**
+
+L'édition étendue du port (personnages ajoutés, jeu en ligne avec des mods identiques) :
+[Gooodak/bt3-port-etendu](https://github.com/Gooodak/bt3-port-etendu).
 
 Le dépôt ne contient aucune donnée du jeu : l'outil lit celles de l'installation de chacun, et les packs
 (`.bt3mod.json`) ne listent que des changements.

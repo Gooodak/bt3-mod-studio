@@ -139,7 +139,8 @@ def run(exe, root, role, log, saves, chars, extra=None):
     shutil.rmtree(saves, ignore_errors=True)
     shutil.copytree(os.path.join(HERE, "testsave"), saves)
     env = dict(os.environ, BT3_DATA=root, BT3_SAVES=saves, BT3_NOSOUND="1", BT3_NOMOVIE="1", BT3_UPDATE_CHECK="0",
-               BT3_NET_SESSION="1", BT3_CHARACTERS=chars, **(extra or {}))
+               BT3_NET_SESSION="1", BT3_CHARACTERS=chars, BT3_GS="none")  # (no window)
+    env.update(extra or {})
     env.pop("BT3_TEST", None)
     env["BT3_NET_HOST" if role == "host" else "BT3_NET_JOIN"] = str(PORT) if role == "host" else f"127.0.0.1:{PORT}"
     return subprocess.Popen([exe], cwd=kit.KIT, env=env, stdout=open(log, "w"), stderr=subprocess.STDOUT,
