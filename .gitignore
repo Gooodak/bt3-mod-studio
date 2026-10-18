@@ -1,0 +1,15 @@
+# the built program: published as a release, not in the code
+BT3 Mod Studio.exe
+runtime/
+build/
+dist/
+*.spec
+
+# made on each computer from its own game (never share game data)
+menu_map.json
+bt3modstudio.json
+__pycache__/
+*.pyc
+
+# a save of the game (menu tests): game data, kept on this computer only
+tools/testsave/

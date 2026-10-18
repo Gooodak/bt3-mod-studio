@@ -1,0 +1,26 @@
+{
+ "format": "bt3-mod-studio/1",
+ "name": "Test Kamehameha",
+ "author": "Claude",
+ "description": "Premier test : le Kamehameha de Goku (début) fait deux fois plus de dégâts et change de nom.",
+ "characters": {
+  "0": {
+   "fields": {
+    "super.damage.0": 13460,
+    "super.guardDamage.0": 4040
+   },
+   "texts": {
+    "en": {
+     "2": "Mega Kamehameha"
+    },
+    "en2": {
+     "2": "Mega Kamehameha"
+    },
+    "fr": {
+     "2": "Méga Kamehameha"
+    }
+   },
+   "nickname": "Goku (début)"
+  }
+ }
+}

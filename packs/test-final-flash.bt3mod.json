@@ -1,0 +1,33 @@
+{
+ "format": "bt3-mod-studio/1",
+ "name": "Test Goku (début) : Mega Kamehameha + Final Flash",
+ "author": "Claude",
+ "description": "Goku (début) : Kamehameha x2 renommé Mega Kamehameha, et le Final Flash de Vegeta Super Saiyan à la place de la Genkidama.",
+ "characters": {
+  "0": {
+   "fields": {
+    "super.damage.0": 13460,
+    "super.guardDamage.0": 4040
+   },
+   "texts": {
+    "en": {
+     "2": "Mega Kamehameha"
+    },
+    "en2": {
+     "2": "Mega Kamehameha"
+    },
+    "fr": {
+     "2": "Méga Kamehameha"
+    }
+   },
+   "nickname": "Goku (début)",
+   "transplants": [
+    {
+     "slot": 2,
+     "from": 33,
+     "fromSlot": 2
+    }
+   ]
+  }
+ }
+}

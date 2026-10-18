@@ -1,0 +1,4 @@
+* text=auto
+# (run in WSL: Linux line ends)
+*.sh text eol=lf
+*.c text eol=lf
