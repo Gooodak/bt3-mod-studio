@@ -1598,13 +1598,21 @@ class Studio(tk.Tk):
                 found["game"], found["game_why"] = updates.game_update(self.game)
             except updates.UpdateError as e:
                 found["game"], found["game_error"] = None, str(e)
+            try:
+                found["official"] = updates.official_status(self.game)  # (z3xox's own releases)
+            except updates.UpdateError as e:
+                found["official_error"] = str(e)
 
         def wait():
             if t.is_alive():
                 self.after(300, wait)
                 return
             self.update_found = found
-            news = [w for w, k in (("l'outil", "tool"), ("le jeu", "game")) if found.get(k)]
+            extended = self.game.edition() == "etendu"
+            news = [w for w, on in (("l'outil", found.get("tool")),
+                                    ("le jeu", found.get("game") and extended),
+                                    ("le jeu (version officielle)", (found.get("official") or {}).get("update")))
+                    if on]  # (switching to the extended edition is offered in the window, not an update)
             self.update_note = ("Mise à jour disponible pour " + " et ".join(news) + " : clique pour voir.") if news \
                 else ""
             self.update_btn.configure(text="● Mise à jour disponible" if news else "Mises à jour",
@@ -1675,6 +1683,26 @@ class Studio(tk.Tk):
             else:
                 line(body, title, ("À jour." if "game_error" not in f else
                                    f"Vérification impossible : {f['game_error']}."), None, None, *back)
+            o = f.get("official")
+            if o:
+                rel, date = o["latest"], o["latest"].get("date", "")[:10]
+                when = f" (publiée le {date[8:10]}/{date[5:7]}/{date[:4]})" if date else ""
+                otitle = f"Version officielle de z3xox : {rel['tag']}{when}"
+                if edition == "officielle":
+                    mine = (f"Ton jeu : {o['have']}" + ("" if o["exact"] else " (d'après la date de l'exe)")
+                            if o["have"] else "Ton jeu : version inconnue")
+                    if o["update"]:
+                        line(body, otitle, mine + f". La {rel['tag']} est plus récente. Le jeu doit être fermé.",
+                             "Mettre à jour le jeu (officiel)", run_official)
+                    else:
+                        line(body, otitle, mine + ". À jour.")
+                else:
+                    line(body, otitle,
+                         "L'édition étendue n'inclut pas encore cette version : elle la suivra (pour la préparer : "
+                         "tools/update_port.py)." if o["extended_behind"] else
+                         "L'édition étendue est à jour avec elle.")
+            elif "official_error" in f:
+                line(body, "Version officielle de z3xox", f"Vérification impossible : {f['official_error']}.")
             win.update_idletasks()
             win.geometry(f"{max(win.winfo_reqwidth(), ui.pz(520))}x{win.winfo_reqheight()}")  # (fits its content)
 
@@ -1718,6 +1746,24 @@ class Studio(tk.Tk):
             in_thread(work, lambda n: (messagebox.showinfo(
                 TITLE, f"Jeu mis à jour : édition étendue {rel['tag']} ({n} fichiers). Tu peux le lancer.",
                 parent=win), self._check_updates(fill)), "Téléchargement et installation du jeu…")
+
+        def run_official():
+            rel = self.update_found["official"]["latest"]
+            if updates.game_running():
+                messagebox.showwarning(TITLE, "Le jeu est ouvert : ferme-le d'abord.", parent=win)
+                return
+            asset = updates.pick(rel["assets"], r"windows.*\.zip$")
+            if asset is None:
+                messagebox.showerror(TITLE, "Cette version de z3xox n'a pas de zip Windows.", parent=win)
+                return
+
+            def work():
+                path = os.path.join(tempfile.mkdtemp(prefix="bt3ms_"), asset["name"])
+                updates.download(asset, path)
+                return updates.install_game(self.game, path, "officielle", rel["tag"])
+            in_thread(work, lambda n: (messagebox.showinfo(
+                TITLE, f"Jeu mis à jour : version officielle {rel['tag']} ({n} fichiers). Tu peux le lancer.",
+                parent=win), self._check_updates(fill)), "Téléchargement et installation du jeu officiel…")
 
         def run_back():
             if not messagebox.askyesno(TITLE, "Remettre l'exe officiel gardé de côté ? Les personnages ajoutés et le "

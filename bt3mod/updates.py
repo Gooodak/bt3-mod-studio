@@ -19,7 +19,7 @@ import urllib.error
 import urllib.request
 import zipfile
 
-TOOL_VERSION = "1.0.1"
+TOOL_VERSION = "1.0.2"
 TOOL_REPO = "Gooodak/bt3-mod-studio"
 PORT_REPO = "Gooodak/bt3-port-etendu"     # the extended edition
 OFFICIAL_REPO = "z3xox/Tenkaichi3Decomp"   # the official one (its zip, to go back)
@@ -56,6 +56,56 @@ def latest(repo):
     return {"tag": data.get("tag_name", ""), "title": data.get("name") or data.get("tag_name", ""),
             "notes": data.get("body") or "",
             "assets": [{"name": a["name"], "url": a["url"], "size": a.get("size", 0)} for a in data.get("assets", [])]}
+
+
+def releases(repo, count=30):
+    """The repository's releases, newest first: [{"tag", "date" (UTC, "2026-10-17T22:01:31Z")}]."""
+    try:
+        with _get(f"https://api.github.com/repos/{repo}/releases?per_page={count}") as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        raise UpdateError(f"GitHub a répondu {e.code}")
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        raise UpdateError(f"pas de connexion ({getattr(e, 'reason', e)})")
+    return [{"tag": d.get("tag_name", ""), "date": d.get("published_at") or ""} for d in data if not d.get("draft")]
+
+
+def official_installed(game, known=None):
+    """(tag, exact) of the official program installed: what the tool installed (exact), else a guess from the
+    program file's date: the newest official release published before it (the zip is unpacked after it is out).
+    (None, False) when there is no official program."""
+    if game.edition() != "officielle":
+        return None, False
+    have = installed(game)
+    if have.get("edition") == "officielle" and have.get("tag"):
+        return have["tag"], True
+    import datetime
+    try:
+        stamp = os.path.getmtime(os.path.join(game_dir(game), GAME_EXE))
+    except OSError:
+        return None, False
+    when = datetime.datetime.fromtimestamp(stamp, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rels = known if known is not None else releases(OFFICIAL_REPO)
+    before = [r for r in rels if r["date"] and r["date"] <= when]
+    return (before[0]["tag"] if before else None), False
+
+
+def official_status(game):
+    """What z3xox has published, against what is installed: {"latest": release, "have", "exact", "update": bool,
+    "extended_behind": bool (the extended edition's newest release is built on an older official one)}."""
+    rel = latest(OFFICIAL_REPO)
+    rels = releases(OFFICIAL_REPO)
+    rel["date"] = next((r["date"] for r in rels if r["tag"] == rel["tag"]), "")
+    have, exact = official_installed(game, rels)
+    out = {"latest": rel, "have": have, "exact": exact,
+           "update": game.edition() == "officielle" and newer(rel["tag"], have or "v0"), "extended_behind": False}
+    try:
+        ext = latest(PORT_REPO)["tag"]  # v0.1.NN-etendu.K: built on the official v0.1.NN
+        base = re.match(r"v0\.1\.\d+(\.\d+)?", ext)
+        out["extended_behind"] = bool(base) and newer(rel["tag"], base.group(0))
+    except UpdateError:
+        pass
+    return out
 
 
 def version_key(tag):

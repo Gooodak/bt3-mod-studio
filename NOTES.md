@@ -49,6 +49,10 @@ En ligne, tous les joueurs doivent avoir la même version (le jeu le vérifie).
   version publiée) et de l'édition étendue (`Gooodak/bt3-port-etendu`). Le bouton « Mises à jour » en bas passe en
   orange quand il y a du nouveau.
 - Outil : téléchargé, puis copié par un petit script une fois l'outil fermé, et relancé.
+- Version officielle de z3xox (`z3xox/Tenkaichi3Decomp`) : en édition officielle, l'outil compare la version installée
+  (connue si l'outil l'a installée, sinon devinée d'après la date de l'exe : la dernière publiée avant) et propose
+  « Mettre à jour le jeu (officiel) » ; en édition étendue, il dit si notre édition n'inclut pas encore la dernière
+  version de z3xox (c'est alors le moment de lancer `tools/update_port.py`).
 - Jeu : le zip est décompressé par-dessus le dossier du jeu (jeu fermé) ; la première fois, l'exe officiel est gardé
   (`Tenkaichi3Decomp-officielle.exe`) et « Revenir à l'édition officielle » le remet. `bt3ms_installed.json` dans le
   dossier du jeu dit ce qui est installé.

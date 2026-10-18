@@ -56,6 +56,17 @@ def main():
         updates.back_to_official(g)
         check("back to the official program", g.edition() == "officielle")
 
+        # z3xox's own newest release, installed: then known exactly, and up to date
+        o = updates.official_status(g)
+        oasset = updates.pick(o["latest"]["assets"], r"windows.*\.zip$")
+        opath = os.path.join(tmp, "official.zip")
+        updates.download(oasset, opath)
+        updates.install_game(g, opath, "officielle", o["latest"]["tag"])
+        o2 = updates.official_status(g)
+        check("z3xox's release installed, then up to date", g.edition() == "officielle" and o2["exact"] and
+              o2["have"] == o["latest"]["tag"] and not o2["update"],
+              f"{o['latest']['tag']}: had {o['have']} (guessed), now {o2['have']} (exact {o2['exact']})")
+
         # the tool: its zip staged and copied over a copy of the tool by the script (no restart)
         tdir = os.path.join(tmp, "tool")
         os.makedirs(tdir)
