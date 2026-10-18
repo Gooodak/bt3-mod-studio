@@ -18,8 +18,10 @@ Ce qui est important à savoir pour continuer le projet : décisions prises, rè
     faut ni l'utiliser ni contourner sa clé) : on joue par adresse (F1 > Online), ou plus tard avec notre propre
     service Cloudflare (`BT3_MATCH_URL`, `port/matchmaking/README.md`, demande un compte Cloudflare) ;
   - les mises à jour annoncées par le jeu viennent de notre dépôt (`PORT_UPDATE_REPO`).
-- **Un seul outil** pour les deux : il détecte l'édition installée (`game.edition()`, d'après une phrase de notre exe).
-  Seuls les personnages ajoutés et les mods importés demandent l'étendue ; l'outil prévient sinon.
+- **Un seul outil** pour les deux : bouton **Édition : Standard / Étendue** en bas (`Studio.set_extended`, réglage
+  `edition` dans `settings.json` ; la première fois, d'après l'édition installée, `game.edition()`). En Standard, les
+  personnages ajoutés restent dans le pack mais ne sont ni montrés ni écrits (`game.apply(pack, added=False)`), et
+  « Ajouter un personnage » / « Mods de personnages » sont désactivés.
 
 ## Licences (important)
 
@@ -50,8 +52,8 @@ En ligne, tous les joueurs doivent avoir la même version (le jeu le vérifie).
 - Jeu : le zip est décompressé par-dessus le dossier du jeu (jeu fermé) ; la première fois, l'exe officiel est gardé
   (`Tenkaichi3Decomp-officielle.exe`) et « Revenir à l'édition officielle » le remet. `bt3ms_installed.json` dans le
   dossier du jeu dit ce qui est installé.
-- **Tant que les dépôts sont privés, GitHub ne répond pas sans autorisation** : les amis ne verront les mises à jour
-  qu'une fois les dépôts publics (ou avec un jeton dans `BT3MS_GITHUB_TOKEN`).
+- Les deux dépôts sont **publics** depuis le 18/10/2026 (avant : GitHub ne répondait pas sans jeton). Le README de
+  `bt3-port-etendu` dit en tête que c'est une version modifiée (obligation de l'AGPL).
 - Publier une version de l'outil : monter `TOOL_VERSION`, `py -I tools/build_exe.py`, zipper (exe + runtime + guides
   dans un dossier `bt3-mod-studio/`), `gh release create vX.Y.Z <zip> -R Gooodak/bt3-mod-studio`.
 
@@ -88,7 +90,7 @@ dans WSL : `testkit-src/rebuild_etendu.sh` (jeu de test), `testkit-src/release_e
 
 ## À faire / en attente
 
-- Pages « Releases » des deux dépôts (zips prêts) et accès des amis (dépôts privés : les ajouter, ou rendre public).
-- Installer l'édition étendue sur le jeu du joueur (avec une copie de l'exe officiel) : attend son accord.
+- Installer l'édition étendue sur le jeu du joueur : il peut le faire lui-même (« Mises à jour » → « Passer à
+  l'édition étendue »).
 - Notre service de mise en relation (codes de salon) : attend un compte Cloudflare.
 - Changer le personnage de base d'un mod importé depuis la fenêtre (aujourd'hui : deviné, écrit dans character.txt).

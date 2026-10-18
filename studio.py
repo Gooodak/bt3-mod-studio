@@ -206,6 +206,9 @@ class Studio(tk.Tk):
         self._build_portrait(body)
         self._build_editor(body)
         self._sizes()
+        mode = appcache.settings().get("edition")
+        self.extended = mode == "etendue" if mode in ("etendue", "standard") else self.game.edition() == "etendu"
+        self._edition_look()
         self.saved = self._snapshot()  # the pack as it was last saved or opened
         self.refresh_list()
         self.select(0)
@@ -304,6 +307,18 @@ class Studio(tk.Tk):
         bar = ttk.Frame(self, style="Panel.TFrame", padding=(px(12), px(3), px(8), px(3)))
         bar.pack(fill="x", side="bottom")
         ttk.Button(bar, text="Raccourcis clavier (F1)", style="Seg.TButton", command=self.show_help).pack(side="right")
+        ed = ttk.Frame(bar, style="Panel.TFrame")
+        ed.pack(side="right", padx=(0, px(16)))
+        ttk.Label(ed, text="Édition", style="Panel.Muted.TLabel").pack(side="left", padx=(0, px(6)))
+        self.ed_std = ttk.Button(ed, text="Standard", style="Seg.TButton", command=lambda: self.set_extended(False))
+        self.ed_std.pack(side="left")
+        self.ed_ext = ttk.Button(ed, text="Étendue", style="Seg.TButton", command=lambda: self.set_extended(True))
+        self.ed_ext.pack(side="left", padx=(px(4), 0))
+        ui.Tooltip(self.ed_std, "Pour le jeu officiel : tout ce qu'il comprend (personnages modifiés, remplacés, "
+                                "attaques, valeurs). Les personnages ajoutés restent dans le pack mais ne sont ni "
+                                "montrés ni écrits dans le jeu.")
+        ui.Tooltip(self.ed_ext, "Pour l'édition étendue du port : en plus, les personnages ajoutés et les mods de "
+                                "personnages de la communauté.")
         self.update_btn = ttk.Button(bar, text="Mises à jour", style="Seg.TButton", command=self.open_updates)
         self.update_btn.pack(side="right", padx=(0, px(10)))
         ui.Tooltip(self.update_btn, lambda: self.update_note or "Vérifier si l'outil ou le jeu ont une nouvelle version")
@@ -342,9 +357,10 @@ class Studio(tk.Tk):
         self.seg_mod.pack(side="left", padx=(px(4), 0))
         self.count_lbl = ttk.Label(seg, text="", style="Panel.Muted.TLabel")
         self.count_lbl.pack(side="right", padx=px(4))
-        add = ttk.Button(side, text="＋  Ajouter un personnage", command=self.add_character)
+        add = self.add_btn = ttk.Button(side, text="＋  Ajouter un personnage", command=self.add_character)
         add.pack(fill="x", pady=(0, px(4)))
-        mods = ttk.Button(side, text="Mods de personnages…", style="Seg.TButton", command=self.open_mods)
+        mods = self.mods_btn = ttk.Button(side, text="Mods de personnages…", style="Seg.TButton",
+                                          command=self.open_mods)
         mods.pack(fill="x", pady=(0, px(8)))
         ui.Tooltip(mods, "Importer un personnage fait par la communauté (un dossier ou un zip de fichiers du jeu), "
                          "voir et retirer les mods installés. Demande l'édition étendue du port.")
@@ -665,7 +681,44 @@ class Studio(tk.Tk):
         return self.pack.get("added", [])
 
     def all_ids(self):
-        return list(range(game.CHARA_COUNT)) + [ADDED + n for n in range(len(self.added()))]
+        """The characters of the list: the game's, then (extended edition) the pack's added ones."""
+        extra = [ADDED + n for n in range(len(self.added()))] if getattr(self, "extended", True) else []
+        return list(range(game.CHARA_COUNT)) + extra
+
+    def _added_note(self):
+        """What a pack's added characters become in the standard edition (said after a pack is opened)."""
+        n = len(self.added())
+        return (f" Il contient {n} personnage(s) ajouté(s) : passe en édition « Étendue » (en bas) pour les voir."
+                if n and not self.extended else "")
+
+    def _edition_look(self):
+        self.ed_std.configure(style="Seg.TButton" if self.extended else "SegOn.TButton")
+        self.ed_ext.configure(style="SegOn.TButton" if self.extended else "Seg.TButton")
+        for b, text in ((self.add_btn, "＋  Ajouter un personnage"), (self.mods_btn, "Mods de personnages…")):
+            b.configure(state="normal" if self.extended else "disabled",
+                        text=text if self.extended else text.rstrip("…") + " (édition étendue)")
+
+    def set_extended(self, on, save=True):
+        """Standard (the official game) or extended edition: what the window offers and what Apply writes. The
+        choice is remembered (save=False: the tests, which leave the person's settings alone)."""
+        if on == self.extended:
+            return
+        self.extended = on
+        if save:
+            appcache.save_settings(edition="etendue" if on else "standard")
+        self._edition_look()
+        if not on and self.is_added(self.chara):
+            self.select(0)
+        self.refresh_list()
+        self._dirty()
+        n = len(self.added())
+        if on:
+            self.status.set("Édition étendue : personnages ajoutés et mods de personnages."
+                            + ("" if self.game.edition() == "etendu" else " Le jeu installé est l'officiel : "
+                               "« Mises à jour » → « Passer à l'édition étendue »."))
+        else:
+            self.status.set("Édition standard (jeu officiel)."
+                            + (f" {n} ajouté(s) gardé(s) dans le pack, pas écrit(s)." if n else ""))
 
     def name_of(self, c):
         """The name a character goes by in the window (an added one: the name it was given)."""
@@ -1884,7 +1937,7 @@ class Studio(tk.Tk):
         self._reselect()
         self.status.set(f"Pack « {pack.get('name', '')} » chargé depuis un code "
                         f"({len(pack['characters'])} personnage(s) modifié(s), empreinte {modpack.fingerprint(pack)}). "
-                        "« Appliquer au jeu » pour y jouer.")
+                        "« Appliquer au jeu » pour y jouer." + self._added_note())
         return None
 
     def open_pack(self):
@@ -1906,7 +1959,8 @@ class Studio(tk.Tk):
         self.saved = self._snapshot()
         self.refresh_list()
         self._reselect()
-        self.status.set(f"Pack ouvert : {path} ({len(self.pack['characters'])} personnage(s) modifié(s))")
+        self.status.set(f"Pack ouvert : {path} ({len(self.pack['characters'])} personnage(s) modifié(s))."
+                        + self._added_note())
 
     def save_pack(self):
         """Saves the pack in a file chosen by the person; True when saved."""
@@ -1945,7 +1999,7 @@ class Studio(tk.Tk):
 
         def work():
             try:
-                result["n"] = self.game.apply(self.pack)
+                result["n"] = self.game.apply(self.pack, added=self.extended)
             except game.ModError as e:
                 result["error"] = str(e)
             except Exception as e:  # (shown to the user rather than lost in the thread)
@@ -1965,7 +2019,7 @@ class Studio(tk.Tk):
             self.refresh_list()
             self._dirty()
             self.status.set(f"Appliqué au jeu : {result['n']} fichier(s) — empreinte {modpack.fingerprint(self.pack)}")
-            n_added = len(self.added())
+            n_added = len(self.added()) if self.extended else 0
             messagebox.showinfo(TITLE, f"Pack « {self.pack['name']} » appliqué : {n_chara} personnage(s) modifié(s)"
                                        + (f", {n_added} ajouté(s) (dossier « characters » à côté du jeu)"
                                           if n_added else "") + f", {result['n']} fichier(s) écrits.\n\n"

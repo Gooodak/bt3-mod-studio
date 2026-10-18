@@ -155,6 +155,8 @@ def main(out, steps):
                 time.sleep(0.02)
             capture(int(d.wm_frame(), 16), os.path.join(out, "mods.png"))
             d.destroy()
+        elif cmd == "edition":  # edition:standard / edition:etendue (the person's setting left alone)
+            app.set_extended(arg == "etendue", save=False)
         elif cmd == "zoom":
             app.set_zoom(float(arg), save=False)  # (the person's own setting is left as it is)
         elif cmd == "focus":  # the keyboard's focus on a tab button (its orange border)

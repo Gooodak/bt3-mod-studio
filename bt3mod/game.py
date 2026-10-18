@@ -506,8 +506,9 @@ class Game:
                 out["pzs3us1/%05d.bin" % idx] = data
         return out
 
-    def apply(self, pack):
-        """Writes the pack into gamedata/mods/. Removes what an earlier apply wrote first. Returns the file count."""
+    def apply(self, pack, added=True):
+        """Writes the pack into gamedata/mods/ (and, with `added`, its added characters as packages: the extended
+        edition). Removes what an earlier apply wrote first. Returns the file count."""
         built = {}
         for chara, change in pack.get("characters", {}).items():
             built.update(self.build_character(int(chara), change, pack))
@@ -515,7 +516,8 @@ class Game:
         if roster is not None:
             built["pzs3us1/%05d.bin" % fields.ROSTER_FILE] = roster
         built.update(self.build_menus(pack))
-        packages = {self.added_folder(n, e): self.build_added(e, pack) for n, e in enumerate(pack.get("added", []))}
+        packages = {self.added_folder(n, e): self.build_added(e, pack)
+                    for n, e in enumerate(pack.get("added", []) if added else [])}
         old_pkgs = set(self.manifest().get("packages", []))
         for folder in packages:
             if os.path.exists(os.path.join(self.characters_dir(), folder)) and folder not in old_pkgs:

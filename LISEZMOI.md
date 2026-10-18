@@ -56,6 +56,13 @@ jeu : ils ne partent pas avec l'outil quand tu le donnes à un ami).
   ki**.
 - Pour choisir un personnage (remplacement, attaque reprise, transformation, forme), une petite fenêtre s'ouvre avec
   la recherche et les portraits : double-clic pour choisir.
+- **Édition** (en bas : **Standard** / **Étendue**) : Standard pour le jeu officiel (les personnages ajoutés et
+  les mods de personnages sont mis de côté : gardés dans le pack, ni montrés ni écrits dans le jeu) ; Étendue pour
+  l'édition étendue du port (tout est là). L'outil choisit tout seul la première fois d'après le jeu installé, puis
+  retient ton choix.
+- **Mises à jour** (en bas) : l'outil regarde au démarrage s'il existe une nouvelle version de lui-même ou de
+  l'édition étendue ; le bouton passe en orange et propose de mettre à jour (ou de passer à l'édition étendue, et
+  d'en revenir).
 - **Taille du texte** (en bas à droite, **A−** / **A+**, ou Ctrl + molette) : de 90 % à 160 %, retenue pour la
   prochaine fois. Quand la fenêtre est trop étroite (texte agrandi, petit écran), la grande illustration se replie
   pour laisser la place aux réglages ; elle revient quand on élargit la fenêtre.

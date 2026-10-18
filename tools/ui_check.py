@@ -44,6 +44,7 @@ def main():
     studio.Studio.HIDDEN = True
     app = studio.Studio(kit.DATA)
     app.attributes("-alpha", 0.0)
+    app.set_extended(True, save=False)  # (whatever the person chose: the tests make added characters)
     pump(app)
     check("window opens on the test game's data", app.game.root == kit.DATA, f"{time.time() - t0:.2f} s")
 
@@ -128,6 +129,16 @@ def main():
           and e.get("transplants") == [{"slot": 2, "from": 33,
                                                                                       "fromSlot": 0}]
           and "＋ Vegeta X" in app._row_text(added), str({k: e[k] for k in e if k != "texts"}))
+    # the edition switch: in the standard one the added character is out of the list (kept in the pack) and the
+    # buttons of the extended one are off; back in the extended one, all is there again
+    app.set_extended(False, save=False)
+    pump(app)
+    hidden = (str(added) not in app.list.tree.get_children() and str(app.add_btn.cget("state")) == "disabled"
+              and len(app.added()) == 1 and app.chara != added)
+    app.set_extended(True, save=False)
+    pump(app)
+    back = str(added) in app.list.tree.get_children() and str(app.add_btn.cget("state")) == "normal"
+    check("edition switch: standard hides the added character", hidden and back, f"hidden {hidden}, back {back}")
     app.select(152)
     app.show_tab("Personnage")
     pump(app)
