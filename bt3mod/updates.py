@@ -19,7 +19,7 @@ import urllib.error
 import urllib.request
 import zipfile
 
-TOOL_VERSION = "1.1.2"
+TOOL_VERSION = "1.1.3"
 TOOL_REPO = "Gooodak/bt3-mod-studio"
 PORT_REPO = "Gooodak/bt3-port-etendu"     # the extended edition
 OFFICIAL_REPO = "z3xox/Tenkaichi3Decomp"   # the official one (its zip, to go back)

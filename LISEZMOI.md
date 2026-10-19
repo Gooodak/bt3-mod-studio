@@ -51,11 +51,13 @@ jeu : ils ne partent pas avec l'outil quand tu le donnes à un ami).
     Blast 1 (par exemple l'Explosive Wave de Vegeta à la place du Taiyoken de Goku), un Blast 2 ou l'Ultime par un
     Blast 2 ou un Ultime. Si une attaque ne peut pas aller sur ce personnage (animations déjà prises, ou effets trop
     lourds pour la place que le jeu leur réserve), l'outil le dit tout de suite.
-  - **Stats** : vie, ki au départ, blast stocks, résistance, corps à corps, ki et Max Power.
+  - **Stats** : vie, ki au départ, blast stocks, résistance, corps à corps (dégâts, ki gagné par coup,
+    projection, vitesse des coups chargés), ki et Max Power.
   - **Rafales de ki** : un tableau des 13 tirs de ki (sur place, en dash, vers le bas depuis les airs, chacun
     normal ou chargé, et la salve des combos) : dégâts, coût, vitesse, guidage, durée.
   - **Déplacements** : les vitesses, nommées (déplacement, dashs, Dragon Dash, pas de côté, esquive…), avec un
-    bouton pour toutes les multiplier d'un coup.
+    bouton pour toutes les multiplier d'un coup ; le ki consommé par les dashs ; saut et maniabilité.
+  - Chaque Blast 2 et l'Ultime ont aussi leur **délai** avant une autre technique et leur **vitesse de ruée**.
 - Une valeur trop haute ou trop basse est ramenée à la limite, et c'est écrit à côté de la case. La vie va jusqu'à
   15 barres : l'écran du jeu en montre 7 au plus, mais la vie au-delà compte bien.
 - **Attaque reprise** : la fenêtre de choix cherche à la fois le nom de l'attaque et le personnage (« spirit »,

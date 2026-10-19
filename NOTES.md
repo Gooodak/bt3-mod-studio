@@ -84,6 +84,21 @@ En ligne, tous les joueurs doivent avoir la même version (le jeu le vérifie).
   `source/src/battle/btl_act_*.c`) ; 14 et 15 ne sont lues par aucune action → cachées.
 - Les valeurs cachées (`Field.hidden`) sont retirées d'un pack à son ouverture, avec un message
   (`fields.drop_hidden`).
+- Revue complète du 20/10/2026 (agents + contrôles) : toutes les valeurs visibles ont un effet, sauf mention.
+  Mesures notables : Max Power réel ≈ moitié de la valeur (le jeu compte à 30 images/s) ; dégâts d'un Blast 1 ≈ le
+  quart de la valeur ; recul des Blast 2 seulement quand l'adversaire garde (et quelques techniques) ; durée / guidage
+  / charge des Blast 2 seulement pour les techniques qui tirent / guident / se chargent ; « Temps pour remplir la
+  jauge Max Power » à 0 divisait par zéro (minimum 0,2). Non mesurés (pas de position dans le kit) : la plupart des
+  vitesses de déplacement, les virages, le recul, le bonus de vitesse et la vie rendue des Blast 1.
+- Ajouts 1.1.3, tous vérifiés en jeu sauf les virages : ki consommé par les dashs (`move.kiCost.0..3`), délai entre
+  techniques (`super.cooldown`), vitesse de ruée (`super.rushSpeed`), vitesse des coups chargés
+  (`param.chargeRateA/B`), ki gagné par coup (`melee.kiGain`, pourcentage), dégâts de la projection
+  (`melee.throwDamage`, enregistrement 0x55 ; écrit après les pourcentages : `fields.ordered`), hauteur de saut,
+  accélérations, virages (`move.height/accel/turnRate`).
+- Commandes trouvées pour les essais : dash vers l'adversaire L2+croix ; Dragon Dash L2+croix+direction ; montée
+  rapide R1 deux fois ; dash en cercle : relâcher puis reprendre L2+croix pendant un dash, loin ; projection : croix
+  deux fois tout près ; coup chargé : carré maintenu ; Blast 1 : L2 puis L2+rond (+haut pour le 2e).
+  `hold N` compte en images de 2 vblanks. Scripts des agents : scratchpad `stats_check/` (non versionnés).
 
 ## Bibliothèque de mods (personnages de la communauté)
 

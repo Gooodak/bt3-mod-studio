@@ -1509,7 +1509,8 @@ class Studio(tk.Tk):
                 ("Vie, ki et blast stocks", "10 000 = 1 barre de vie · 20 000 = 1 barre de ki",
                  ["roster.health", "roster.kiStart", "roster.stocks"]),
                 ("Résistance", None, ["param.damageTaken", "param.hitReactScale"]),
-                ("Corps à corps", None, ["melee.damageScale"]),
+                ("Corps à corps", None, ["melee.damageScale", "melee.kiGain", "melee.throwDamage",
+                                         "param.chargeRateA", "param.chargeRateB"]),
                 ("Ki et Max Power", None, [f.key for f in fields.FIELDS if f.slot == "Ki et Max Power"])):
             box = ui.card(inner, title, sub)
             self._rows(box, keys)
@@ -1543,6 +1544,8 @@ class Studio(tk.Tk):
                    command=lambda: self._scale_moves(None)).pack(side="left")
         for title, ids in fields.MOVE_GROUPS:
             self._rows(ui.card(inner, title), [f"move.speed.{i}" for i in ids])
+        for title in ("Ki consommé", "Saut et maniabilité"):
+            self._rows(ui.card(inner, title), [f.key for f in fields.FIELDS if f.slot == title])
 
     def _scale_moves(self, pct):
         try:

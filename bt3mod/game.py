@@ -342,16 +342,13 @@ class Game:
                                                 int(t["fromSlot"]), skill=transplant.is_skill(t))
                 except transplant.IncompatibleGraft:
                     raise ModError(self.graft_conflict(chara, change, t))
-            for key, value in values.items():
+            for key, value in fields.ordered(values):
                 f = fields.BY_KEY.get(key)
                 if f is None:
                     raise ModError(f"paramètre inconnu : {key}")
                 if f.where == "roster":
                     continue  # written once for everyone by build_roster
-                if f.kind == "scale":
-                    fields.scale_melee(entries, f.clamp(value))
-                else:
-                    f.write(entries, f.clamp(value))
+                fields.write_value(entries, f, value)
             if new_slots:
                 entries[fields.ENTRY_PARAM] = forms.write(entries[fields.ENTRY_PARAM], slots)
             for lang, renames in texts.items():
@@ -489,16 +486,13 @@ class Game:
                     except transplant.IncompatibleGraft:
                         raise ModError(self.graft_conflict(base, change, t))
                     changed = True
-                for key, value in change.get("fields", {}).items():
+                for key, value in fields.ordered(change.get("fields", {})):
                     f = fields.BY_KEY.get(key)
                     if f is None:
                         raise ModError(f"paramètre inconnu : {key}")
                     if f.where == "roster":
                         continue  # (character.txt: health, ki, blast stocks)
-                    if f.kind == "scale":
-                        fields.scale_melee(entries, f.clamp(value))
-                    else:
-                        f.write(entries, f.clamp(value))
+                    fields.write_value(entries, f, value)
                     changed = True
                 if slots != own:
                     entries[fields.ENTRY_PARAM] = forms.write(entries[fields.ENTRY_PARAM], slots)
