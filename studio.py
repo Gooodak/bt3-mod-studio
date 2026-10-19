@@ -3,6 +3,7 @@ import copy
 import json
 import os
 import re
+import shutil
 import sys
 import threading
 import time
@@ -1884,12 +1885,15 @@ class Studio(tk.Tk):
             asset = updates.pick(rel["assets"], r"\.zip$")
 
             def work():
-                path = os.path.join(tempfile.mkdtemp(prefix="bt3ms_"), asset["name"])
+                path = os.path.join(tempfile.mkdtemp(prefix="bt3ms_dl_"), asset["name"])
                 updates.download(asset, path)
-                return updates.stage_tool(path, game.tool_folder(), os.getpid())
+                try:
+                    return updates.stage_tool(path)
+                finally:
+                    shutil.rmtree(os.path.dirname(path), ignore_errors=True)
 
-            def then(script):
-                updates.run_staged(script)
+            def then(new_exe):
+                updates.run_staged(new_exe, game.tool_folder(), os.getpid())
                 self.destroy()
             in_thread(work, then, "Téléchargement de la nouvelle version de l'outil…")
 
@@ -2381,9 +2385,26 @@ def check_archive(src, out):
         f.write(text)
 
 
+def finish_update(args):
+    """`BT3 Mod Studio.exe --finish-update <pid> <tool folder> [--no-restart]`: the new version, started from its
+    staging folder by the old one (updates.run_staged), copies itself over the tool once the old one has closed."""
+    import ctypes
+    from bt3mod import updates
+    src = os.path.dirname(os.path.abspath(sys.executable))
+    try:
+        updates.finish_update(src, args[1], int(args[0]), restart="--no-restart" not in args)
+    except Exception as e:
+        ctypes.windll.user32.MessageBoxW(
+            None, f"La mise à jour de l'outil n'a pas pu se terminer : {e}.\n\nLa nouvelle version est dans le "
+                  f"dossier « {src} » : ferme l'outil et copie son contenu dans « {args[1]} ».", TITLE, 0x30)
+
+
 def main():
     if len(sys.argv) == 4 and sys.argv[1] == "--check-archive":
         check_archive(sys.argv[2], sys.argv[3])
+        return
+    if len(sys.argv) >= 4 and sys.argv[1] == "--finish-update":
+        finish_update(sys.argv[2:])
         return
     try:  # sharp text on screens with a zoom above 100 % (the sizes follow: studio_ui.px)
         import ctypes

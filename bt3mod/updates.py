@@ -19,7 +19,7 @@ import urllib.error
 import urllib.request
 import zipfile
 
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.1.1"
 TOOL_REPO = "Gooodak/bt3-mod-studio"
 PORT_REPO = "Gooodak/bt3-port-etendu"     # the extended edition
 OFFICIAL_REPO = "z3xox/Tenkaichi3Decomp"   # the official one (its zip, to go back)
@@ -233,10 +233,13 @@ def tool_update():
     return rel if newer(rel["tag"], TOOL_VERSION) and pick(rel["assets"], r"\.zip$") else None
 
 
-def stage_tool(zip_path, tool_dir, pid, exe_name="BT3 Mod Studio.exe", restart=True):
-    """Unpacks the tool's zip into a staging folder and writes the script that, once process `pid` has ended,
-    copies it over `tool_dir` and starts the tool again. Returns the script's path (to start, then quit)."""
-    stage = tempfile.mkdtemp(prefix="bt3ms_update_")
+EXE_NAME = "BT3 Mod Studio.exe"
+STAGE_PREFIX = "bt3ms_update_"
+
+
+def stage_tool(zip_path, exe_name=EXE_NAME):
+    """Unpacks the tool's zip into a staging folder; returns the NEW program there (run_staged starts it)."""
+    stage = tempfile.mkdtemp(prefix=STAGE_PREFIX)
     with zipfile.ZipFile(zip_path) as z:
         for info in z.infolist():
             name = info.filename.replace("\\", "/")
@@ -247,17 +250,83 @@ def stage_tool(zip_path, tool_dir, pid, exe_name="BT3 Mod Studio.exe", restart=T
     src = inner if os.path.isdir(inner) else stage
     if not os.path.exists(os.path.join(src, exe_name)):
         raise UpdateError("le zip ne contient pas l'outil")
-    script = os.path.join(stage, "update.cmd")
-    with open(script, "w", encoding="mbcs", newline="\r\n") as f:
-        f.write("@echo off\n"
-                ":wait\n"
-                f'tasklist /FI "PID eq {pid}" /NH | find "{pid}" >nul && (timeout /t 1 /nobreak >nul & goto wait)\n'
-                f'robocopy "{src}" "{tool_dir}" /E /NFL /NDL /NJH /NJS /NP >nul\n'
-                + (f'start "" "{os.path.join(tool_dir, exe_name)}"\n' if restart else ""))
-    return script
+    return os.path.join(src, exe_name)
 
 
-def run_staged(script):
-    """Starts the update script detached (no window), so that it outlives the tool."""
-    subprocess.Popen(["cmd", "/c", script], creationflags=subprocess.DETACHED_PROCESS |
-                     subprocess.CREATE_NEW_PROCESS_GROUP | 0x08000000, close_fds=True)
+def run_staged(new_exe, tool_dir, pid, restart=True):
+    """Starts the new version from its staging folder with --finish-update: once process `pid` (this tool) has ended,
+    it copies itself over `tool_dir` and starts the tool from there (finish_update). Up to 1.1.0 a .cmd script did
+    the copy; started without a console, Windows ended it at its first command and nothing was copied."""
+    args = [new_exe, "--finish-update", str(pid), tool_dir] + ([] if restart else ["--no-restart"])
+    try:  # (out of the tool's job, if it is in one that ends its processes with it)
+        subprocess.Popen(args, cwd=os.path.dirname(new_exe), close_fds=True,
+                         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | 0x01000000)  # CREATE_BREAKAWAY_FROM_JOB
+    except OSError:
+        subprocess.Popen(args, cwd=os.path.dirname(new_exe), close_fds=True,
+                         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+
+
+def wait_process(pid, seconds=120):
+    """Waits for process `pid` to end; True when it has (or never was)."""
+    import ctypes
+    k = ctypes.windll.kernel32
+    h = k.OpenProcess(0x00100000, False, int(pid))  # SYNCHRONIZE
+    if not h:
+        return True
+    try:
+        return k.WaitForSingleObject(h, int(seconds * 1000)) == 0
+    finally:
+        k.CloseHandle(h)
+
+
+def finish_update(src, tool_dir, pid, restart=True, exe_name=EXE_NAME, log=None):
+    """Run by the NEW version from its staging folder `src`: waits for the old tool (`pid`) to end, copies `src`
+    over `tool_dir` (each file retried while still locked), then starts the tool there. Writes what it did in `log`
+    (default: update.log next to the staging folder). Raises UpdateError when the copy could not be done."""
+    import time
+    stage = os.path.dirname(src) if os.path.basename(src) == "bt3-mod-studio" else src
+    log = log or os.path.join(stage, "update.log")
+    lines = []
+
+    def note(text):
+        lines.append(text)
+        with open(log, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
+    note(f"de {src}\nvers {tool_dir}\nattente de la fermeture de l'outil (processus {pid})")
+    if not os.path.exists(os.path.join(tool_dir, exe_name)):
+        note("ERREUR : ce dossier ne contient pas l'outil")
+        raise UpdateError(f"le dossier « {tool_dir} » ne contient pas l'outil")
+    if not wait_process(pid):
+        note("ERREUR : l'outil ne s'est pas fermé")
+        raise UpdateError("l'ancienne version de l'outil ne s'est pas fermée")
+    # the staging folders of earlier tries (not this one: its program is running)
+    for d in os.listdir(tempfile.gettempdir()):
+        p = os.path.join(tempfile.gettempdir(), d)
+        if d.startswith(STAGE_PREFIX) and os.path.normcase(os.path.abspath(p)) != os.path.normcase(os.path.abspath(stage)):
+            shutil.rmtree(p, ignore_errors=True)
+    failed = []
+    count = 0
+    for folder, _dirs, files in os.walk(src):
+        rel = os.path.relpath(folder, src)
+        dest = os.path.normpath(os.path.join(tool_dir, rel))
+        os.makedirs(dest, exist_ok=True)
+        for name in files:
+            if rel == "." and name == "update.log":
+                continue
+            for attempt in range(60):  # (an antivirus or the old process's last moments: up to 30 s per file)
+                try:
+                    shutil.copy2(os.path.join(folder, name), os.path.join(dest, name))
+                    count += 1
+                    break
+                except OSError as e:
+                    if attempt == 59:
+                        failed.append(f"{os.path.join(rel, name)} ({e})")
+                    time.sleep(0.5)
+    if failed:
+        note(f"{count} fichiers copiés, {len(failed)} en échec :\n" + "\n".join(failed))
+        raise UpdateError(f"{len(failed)} fichier(s) n'ont pas pu être remplacés, dont {failed[0]}")
+    note(f"{count} fichiers copiés : mise à jour faite")
+    if restart:
+        subprocess.Popen([os.path.join(tool_dir, exe_name)], cwd=tool_dir, close_fds=True)
+    return count

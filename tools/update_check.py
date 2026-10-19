@@ -1,6 +1,6 @@
 """Updates (bt3mod/updates.py) on a FAKE game folder and a copy of the tool, never the player's own game:
 the extended edition's release read from GitHub, installed over an official game (the official program kept),
-seen as up to date, and the official one put back; the tool's update staged and copied by its script.
+seen as up to date, and the official one put back; the tool's new version copying itself over a copy of the tool.
     py -I tools/update_check.py          (about 1 minute; needs the network)
 While the repositories are private, GitHub answers only with a token: the one of the `gh` program is used."""
 import os
@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -67,19 +68,27 @@ def main():
               o2["have"] == o["latest"]["tag"] and not o2["update"],
               f"{o['latest']['tag']}: had {o['have']} (guessed), now {o2['have']} (exact {o2['exact']})")
 
-        # the tool: its zip staged and copied over a copy of the tool by the script (no restart)
+        # the tool: the release zip (build it first: tools/release_tool.py) staged, and its program, started the way
+        # the tool starts it, copies itself over a copy of the tool once a fake "old tool" has closed (no restart)
         tdir = os.path.join(tmp, "tool")
         os.makedirs(tdir)
         with open(os.path.join(tdir, "BT3 Mod Studio.exe"), "wb") as f:
             f.write(b"old")
         tzip = os.path.join(os.path.dirname(kit.KIT), "releases", "BT3-Mod-Studio-windows.zip")
-        dead = subprocess.Popen(["cmd", "/c", "exit"])
-        dead.wait()
-        script = updates.stage_tool(tzip, tdir, dead.pid, restart=False)
-        subprocess.run(["cmd", "/c", script], capture_output=True)
+        new_exe = updates.stage_tool(tzip)
+        old = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(4)"])
+        updates.run_staged(new_exe, tdir, old.pid, restart=False)
+        log = os.path.join(os.path.dirname(os.path.dirname(new_exe)), "update.log")
+        early = os.path.getsize(os.path.join(tdir, "BT3 Mod Studio.exe"))
+        for _ in range(120):
+            if os.path.exists(log) and "mise à jour faite" in open(log, encoding="utf-8").read():
+                break
+            time.sleep(0.5)
         size = os.path.getsize(os.path.join(tdir, "BT3 Mod Studio.exe"))
-        check("the tool's update copied by its script", size > 1000 and
-              os.path.isdir(os.path.join(tdir, "runtime")), f"exe {size} bytes")
+        text = open(log, encoding="utf-8").read().strip().splitlines()[-1] if os.path.exists(log) else "no log"
+        check("the tool's new version copies itself after the old closed", early == 3 and old.poll() is not None and
+              size > 1000 and os.path.isdir(os.path.join(tdir, "runtime")), f"exe {size} bytes; {text}")
+        shutil.rmtree(os.path.dirname(os.path.dirname(new_exe)), ignore_errors=True)
     except updates.UpdateError as e:
         check("GitHub reached", False, str(e))
     finally:

@@ -59,8 +59,15 @@ En ligne, tous les joueurs doivent avoir la même version (le jeu le vérifie).
   dossier du jeu dit ce qui est installé.
 - Les deux dépôts sont **publics** depuis le 18/10/2026 (avant : GitHub ne répondait pas sans jeton). Le README de
   `bt3-port-etendu` dit en tête que c'est une version modifiée (obligation de l'AGPL).
-- Publier une version de l'outil : monter `TOOL_VERSION`, `py -I tools/build_exe.py`, zipper (exe + runtime + guides
-  dans un dossier `bt3-mod-studio/`), `gh release create vX.Y.Z <zip> -R Gooodak/bt3-mod-studio`.
+- Publier une version de l'outil : monter `TOOL_VERSION`, committer, `py -I tools/release_tool.py` (construit l'exe
+  dans une copie propre du dépôt et fait le zip dans `releases`), `py -I tools/update_check.py`, puis
+  `gh release create vX.Y.Z <zip> -R Gooodak/bt3-mod-studio`.
+- Mise à jour de l'outil par lui-même : il télécharge le zip, le décompresse dans `%TEMP%t3ms_update_*`, lance la
+  **nouvelle** version de là avec `--finish-update <pid> <dossier>` et se ferme ; la nouvelle attend sa fermeture,
+  se recopie par-dessus l'outil (fichier par fichier, réessayé s'il est encore verrouillé), écrit `update.log` et
+  relance l'outil. Jusqu'à 1.1.0 c'était un script `.cmd` lancé sans console : Windows l'arrêtait à sa première
+  commande, rien n'était copié (corrigé en 1.1.1). **Les versions ≤ 1.1.0 ne peuvent donc pas se mettre à jour
+  seules** : il faut une fois télécharger le zip de la page Releases et le décompresser par-dessus (outil fermé).
 
 ## Bibliothèque de mods (personnages de la communauté)
 
