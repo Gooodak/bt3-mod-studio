@@ -62,7 +62,7 @@ En ligne, tous les joueurs doivent avoir la même version (le jeu le vérifie).
 - Publier une version de l'outil : monter `TOOL_VERSION`, committer, `py -I tools/release_tool.py` (construit l'exe
   dans une copie propre du dépôt et fait le zip dans `releases`), `py -I tools/update_check.py`, puis
   `gh release create vX.Y.Z <zip> -R Gooodak/bt3-mod-studio`.
-- Mise à jour de l'outil par lui-même : il télécharge le zip, le décompresse dans `%TEMP%t3ms_update_*`, lance la
+- Mise à jour de l'outil par lui-même : il télécharge le zip, le décompresse dans `%TEMP%\bt3ms_update_*`, lance la
   **nouvelle** version de là avec `--finish-update <pid> <dossier>` et se ferme ; la nouvelle attend sa fermeture,
   se recopie par-dessus l'outil (fichier par fichier, réessayé s'il est encore verrouillé), écrit `update.log` et
   relance l'outil. Jusqu'à 1.1.0 c'était un script `.cmd` lancé sans console : Windows l'arrêtait à sa première
