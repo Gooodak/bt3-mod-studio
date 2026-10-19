@@ -277,12 +277,8 @@ class Studio(tk.Tk):
         self.app_title = put(ttk.Label(left, text=TITLE, style="AppTitle.Panel.TLabel"), (px(8), px(22)))
         put(ttk.Label(left, text="Pack", style="Panel.Muted.TLabel"))
         self.pack_name = tk.StringVar(value=self.pack["name"])
-        self.top_entries = [put(ttk.Entry(left, textvariable=self.pack_name, width=22), (px(6), px(8)), weight=1,
+        self.top_entries = [put(ttk.Entry(left, textvariable=self.pack_name, width=22), (px(6), px(14)), weight=1,
                                 tip="Le nom du pack (il apparaît aussi chez tes amis)")]
-        put(ttk.Label(left, text="par", style="Panel.Muted.TLabel"))
-        self.pack_author = tk.StringVar()
-        self.top_entries.append(put(ttk.Entry(left, textvariable=self.pack_author, width=14), (px(6), px(14)),
-                                    weight=1, tip="Ton pseudo"))
         for text, cmd, tip in (
                 ("Nouveau", self.new_pack, "Commencer un pack vide (Ctrl+N)"),
                 ("Ouvrir…", self.open_pack, "Ouvrir un pack enregistré, un fichier .bt3mod.json (Ctrl+O)"),
@@ -2212,7 +2208,6 @@ class Studio(tk.Tk):
 
     def _sync_meta(self):
         self.pack["name"] = self.pack_name.get().strip() or "Sans nom"
-        self.pack["author"] = self.pack_author.get().strip()
 
     def _keep_changes(self):
         """When the pack has changes not saved: asks whether to save them first. False = the person cancelled."""
@@ -2234,7 +2229,6 @@ class Studio(tk.Tk):
         self.pack = modpack.new()
         self.pack_path = None
         self.pack_name.set(self.pack["name"])
-        self.pack_author.set("")
         self.saved = self._snapshot()
         self.refresh_list()
         self._reselect()
@@ -2256,7 +2250,6 @@ class Studio(tk.Tk):
         self.pack = pack
         self.pack_path = None
         self.pack_name.set(pack.get("name", ""))
-        self.pack_author.set(pack.get("author", ""))
         self.saved = self._snapshot()
         self.refresh_list()
         self._reselect()
@@ -2279,9 +2272,7 @@ class Studio(tk.Tk):
             messagebox.showerror(TITLE, f"Impossible d'ouvrir ce pack :\n{e}")
             return
         self.pack_path = path
-        name, author = self.pack.get("name", ""), self.pack.get("author", "")
-        self.pack_name.set(name)
-        self.pack_author.set(author)
+        self.pack_name.set(self.pack.get("name", ""))
         self.saved = self._snapshot()
         self.refresh_list()
         self._reselect()
