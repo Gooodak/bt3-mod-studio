@@ -1,4 +1,5 @@
 """BT3 Mod Studio: a window to change the characters of Dragon Ball Z Budokai Tenkaichi 3 (Tenkaichi3Decomp)."""
+import copy
 import json
 import os
 import re
@@ -358,6 +359,8 @@ class Studio(tk.Tk):
                         "étendue du port.")
         self.list = ui.CharList(side, self.names, self.icons, on_select=self._on_list)
         self.list.pack(fill="both", expand=True)
+        self.list.tree.bind("<Button-3>", self._list_menu)
+        self.list.tree.bind("<Delete>", lambda e: self.delete_added() if self.is_added(self.chara) else None)
 
     def _sizes(self):
         """The sizes that follow the text size: the side bar, the rows of the lists, the window's width."""
@@ -1055,7 +1058,10 @@ class Studio(tk.Tk):
             ttk.Label(grid, text=label, style="Card.TLabel").grid(row=i, column=0, sticky="w", padx=(0, px(10)),
                                                                    pady=px(3))
             var = tk.StringVar()
-            ui.entry(grid, var, width=34).grid(row=i, column=1, sticky="w", pady=px(3))
+            ent = ui.entry(grid, var, width=34)
+            ent.grid(row=i, column=1, sticky="w", pady=px(3))
+            self.menu_entries = getattr(self, "menu_entries", {})
+            self.menu_entries[key] = ent
             count = ttk.Label(grid, text="", style="Card.Muted.TLabel", width=40)
             count.grid(row=i, column=2, sticky="w", padx=px(10))
             var.trace_add("write", lambda *a, k=key: self._on_menu_name(k))
@@ -1563,10 +1569,59 @@ class Studio(tk.Tk):
             self.pack["characters"].pop(str(self.chara), None)
         self._reselect()
 
-    def add_character(self):
-        """A new added character, made from a character of the game chosen in the picker."""
-        base = self._pick("Ajouter un personnage : à partir de quel personnage du jeu ?",
-                          current=self.base_of(self.chara) if self.chara is not None else None)
+    def _list_menu(self, e):
+        """Right click on the list: what can be done with that character."""
+        row = self.list.tree.identify_row(e.y)
+        if not row:
+            return
+        c = int(row)
+        if c != self.chara:
+            self.list.select(c)
+            self.select(c)
+        m = tk.Menu(self, tearoff=0, bg=ui.CARD, fg=ui.TEXT, activebackground=ui.SELECT, activeforeground="#ffffff",
+                    disabledforeground=ui.MUTED, font=ui.FONT, bd=1, relief="solid")
+        if self.is_added(c):
+            m.add_command(label="Renommer", command=self.rename_added)
+            m.add_command(label="Dupliquer", command=self.duplicate_added)
+            m.add_separator()
+            m.add_command(label="Supprimer…   (Suppr)", command=self.delete_added)
+        else:
+            m.add_command(label=f"Ajouter un personnage à partir de {self.names[c]}",
+                          command=lambda: self.add_character(c),
+                          state="normal" if self.extended else "disabled")
+            m.add_separator()
+            m.add_command(label="Réinitialiser ses changements…", command=self.reset_chara,
+                          state="normal" if self.is_changed(c) else "disabled")
+        try:
+            m.tk_popup(e.x_root, e.y_root)
+        finally:
+            m.grab_release()
+
+    def rename_added(self):
+        """The added character's name is typed in the Personnage page: there, with the cursor in it."""
+        self.show_tab("Personnage")
+        self.update_idletasks()
+        ent = getattr(self, "menu_entries", {}).get("menuName")
+        if ent is not None:
+            self.pages["Personnage"].top()
+            ent.focus_set()
+            ent.select_range(0, "end")
+
+    def duplicate_added(self):
+        """A copy of the selected added character, with all its changes."""
+        e = copy.deepcopy(self.entry())
+        e["name"] = (self.name_of(self.chara) + " (copie)")[:30]
+        self.added().append(e)
+        self.refresh_list()
+        self.select(ADDED + len(self.added()) - 1)
+        self._refresh_row()
+        self.status.set(f"Copie faite : {e['name']}")
+
+    def add_character(self, base=None):
+        """A new added character, made from a character of the game (chosen in the picker, or given)."""
+        if base is None:
+            base = self._pick("Ajouter un personnage : à partir de quel personnage du jeu ?",
+                              current=self.base_of(self.chara) if self.chara is not None else None)
         if base is None or base == ui.Picker.NONE:
             return
         name = self.names[base].partition(" – ")[0] + " (nouveau)"
@@ -1918,7 +1973,8 @@ class Studio(tk.Tk):
 
     def delete_added(self):
         c = self.chara
-        if not messagebox.askyesno(TITLE, f"Supprimer {self.name_of(c)} du pack ?"):
+        if not messagebox.askyesno(TITLE, f"Supprimer {self.name_of(c)} du pack ?\n(Il quittera aussi le jeu au "
+                                          "prochain « Appliquer au jeu ».)"):
             return
         del self.added()[c - ADDED]
         self.refresh_list()

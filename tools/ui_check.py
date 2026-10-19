@@ -132,6 +132,19 @@ def main():
           and e.get("transplants") == [{"slot": 2, "from": 33,
                                                                                       "fromSlot": 0}]
           and "＋ Vegeta X" in app._row_text(added), str({k: e[k] for k in e if k != "texts"}))
+    # the list's right-click actions on an added character: duplicate, then delete the copy
+    app.duplicate_added()
+    pump(app)
+    copied = len(app.added()) == 2 and app.added()[1]["name"] == "Vegeta X (copie)" and app.chara == added + 1
+    messagebox.askyesno = lambda *a, **k: True  # (the "delete?" question answered yes)
+    app.delete_added()
+    messagebox.askyesno = refuse
+    pump(app)
+    check("an added character duplicated, then the copy deleted", copied and len(app.added()) == 1 and
+          str(added + 1) not in app.list.tree.get_children(), f"copied {copied}, left {len(app.added())}")
+    app.select(added)
+    pump(app)
+
     # the edition switch: in the standard one the added character is out of the list (kept in the pack) and the
     # buttons of the extended one are off; back in the extended one, all is there again
     app.game._cache["edition"] = "officielle"  # (as if the official game were installed)
