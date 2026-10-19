@@ -155,6 +155,19 @@ def main(out, steps):
                 time.sleep(0.02)
             capture(int(d.wm_frame(), 16), os.path.join(out, "mods.png"))
             d.destroy()
+        elif cmd in ("library", "addmod"):  # the library window / an added character from a library entry (group)
+            from bt3mod import library
+            if cmd == "addmod":
+                app.add_from_mod(next(e for e in library.entries() if e["group"] == arg))
+                continue
+            ui.Picker.HIDDEN = True
+            app.open_library()
+            d = app.library_dialog
+            for _ in range(10):
+                app.update()
+                time.sleep(0.02)
+            capture(int(d.wm_frame(), 16), os.path.join(out, "library.png"))
+            d.destroy()
         elif cmd == "edition":  # edition:standard / edition:etendue (the person's setting left alone)
             app.game._cache["edition"] = "etendu" if arg == "etendue" else "officielle"  # (as if installed)
             app.sync_edition()

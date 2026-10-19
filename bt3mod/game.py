@@ -5,6 +5,7 @@ loads instead of the original (port/src/plat_fcache.c, Port_FileOpenHost).
 """
 import json
 import os
+import re
 import struct
 
 from . import fields, forms, menunames, movetext, pak, transplant
@@ -122,11 +123,29 @@ class Game:
                 out[f.key] = f.read(e)
         return out
 
+    def mod_entries(self, mod):
+        """Entries of the first costume of a mod of the library (an added character made from it)."""
+        key = ("mod", mod)
+        if key not in self._cache:
+            from . import library
+            try:
+                self._cache[key] = pak.read(library.read(mod, "chara_1p.pak"))
+            except OSError:
+                raise ModError(f"le mod « {mod} » n'est pas dans la bibliothèque de mods : importe-le d'abord")
+        return self._cache[key]
+
+    def source_entries(self, chara, change):
+        """The costume a character starts from: its mod's (key "mod", an added character made from a mod of the
+        library), else its base character's (key "base"), else its own."""
+        if change.get("mod"):
+            return self.mod_entries(change["mod"])
+        return self.base_entries(int(change.get("base", chara)))
+
     def graft_conflict(self, chara, change, t):
         """None when technique graft t fits the slot, else a message saying why not."""
         from . import roster
         base = int(change.get("base", chara))
-        entries = list(self.base_entries(base))
+        entries = list(self.source_entries(chara, change))
         if transplant.is_skill(t):
             name = (self.move_names(int(t["from"])) + [""] * 2)[int(t["fromSlot"])].strip() or "cette attaque"
         else:
@@ -142,7 +161,7 @@ class Game:
                     "d'animations ou de caméras propres à son personnage, et ce personnage utilise déjà ces "
                     "emplacements pour ses propres attaques.")
         # (the sizes with every graft of the slot: they add up)
-        for k, data, limit, what in self._graft_packs(base, change.get("transplants", [])):
+        for k, data, limit, what in self._graft_packs(base, change.get("transplants", []), change.get("mod")):
             size = (len(data) + SECTOR - 1) // SECTOR * SECTOR
             if size > limit:
                 return (f"« {name} » de {roster.name(int(t['from']))} ne rentre pas sur ce personnage : avec elle, "
@@ -153,7 +172,7 @@ class Game:
     def preview_entries(self, chara, change):
         """Costume 0 of a character as the pack makes it before its number changes: the base character (key
         "base") with the techniques grafted onto it (key "transplants")."""
-        entries = list(self.base_entries(int(change.get("base", chara))))
+        entries = list(self.source_entries(chara, change))
         for t in change.get("transplants", []):
             try:
                 transplant.apply_to_costume(entries, self.base_entries(int(t["from"])), int(t["slot"]),
@@ -224,14 +243,14 @@ class Game:
         """The 4 transformation slots the pack gives the character (forms.py): its own choice (key "transforms"),
         else those of the character it copies, aimed at the pack's copies of their targets."""
         base = int(change.get("base", chara))
-        own = forms.read(self.params(base))
+        own = forms.read(self.source_entries(chara, change)[fields.ENTRY_PARAM])
         if change.get("transforms") is not None:
             chosen = change["transforms"]
             if len(chosen) != forms.SLOTS or any(c is not None and not 0 <= int(c["to"]) < CHARA_COUNT
                                                  for c in chosen):
                 raise ModError(f"personnage {chara} : transformations invalides {chosen}")
             return forms.resolve(chosen, own, *self.transform_templates())
-        return forms.remap(own, self.clones(pack)) if base != chara else own
+        return forms.remap(own, self.clones(pack)) if base != chara and not change.get("mod") else own
 
     def grid(self):
         """The cells of the character select grid on the disc (without the long first scan of the menus)."""
@@ -362,13 +381,19 @@ class Game:
                 out["pzs3us1/%05d.bin" % (first + k)] = data
         return out
 
-    def _graft_packs(self, base, grafts):
+    def _graft_packs(self, base, grafts, mod=None):
         """[(block file +k, data, the game's buffer size, what)] of the animation and effect packs of character
-        `base` with the techniques grafted onto it."""
+        `base` (or of mod `mod` of the library, where it has them) with the techniques grafted onto it."""
+        from . import library
         out = []
         for k, step, limit, what in ((8, transplant.apply_to_anims, ANIM_BUF_SIZE, "animations"),
                                      (9, transplant.apply_to_effects, EFFECT_BUF_SIZE, "effets")):
-            entries = pak.read(self.original(CHARA_FIRST + base * 10 + k))
+            own = f"chara_{'anm' if k == 8 else 'eff'}.pak"
+            if mod and os.path.exists(library.path(mod, own)):
+                entries = pak.read(library.read(mod, own))
+                limit = max(limit, 1443840 if k == 8 else 845824)  # (a package's own buffers: the extended edition's)
+            else:
+                entries = pak.read(self.original(CHARA_FIRST + base * 10 + k))
             for t in grafts:
                 src = pak.read(self.original(CHARA_FIRST + int(t["from"]) * 10 + k))
                 step(entries, src, int(t["slot"]), int(t["fromSlot"]), skill=transplant.is_skill(t))
@@ -413,15 +438,16 @@ class Game:
         if not 0 <= base < CHARA_COUNT:
             raise ModError(f"personnage ajouté « {entry.get('name', '')} » : personnage de base inconnu {base}")
         change = {k: v for k, v in entry.items() if k not in ("base", "name", "form")}
-        built = self.build_character(base, change, None)
-        first = CHARA_FIRST + base * 10
-        stem = "chara"
-        files = {}
-        for idx, _ in self.costumes(base):
-            k = idx - first
-            rel = "pzs3us1/%05d.bin" % idx
-            name = f"{stem}_{k + 1}p.pak" if k < 4 else f"{stem}_{k - 3}p_dmg.pak"
-            files[name] = built.get(rel) or self.original(idx)
+        first, stem = CHARA_FIRST + base * 10, "chara"
+        if entry.get("mod"):  # (made from a mod of the library: its files, changed where the pack says)
+            files, built = self._build_from_mod(entry["mod"], base, change), {}
+        else:  # (made from a disc character: its costumes, changed where the pack says)
+            files, built = {}, self.build_character(base, change, None)
+            for idx, _ in self.costumes(base):
+                k = idx - first
+                rel = "pzs3us1/%05d.bin" % idx
+                name = f"{stem}_{k + 1}p.pak" if k < 4 else f"{stem}_{k - 3}p_dmg.pak"
+                files[name] = built.get(rel) or self.original(idx)
         for k, suffix in ((8, "_anm.pak"), (9, "_eff.pak")):
             rel = "pzs3us1/%05d.bin" % (first + k)
             if rel in built:
@@ -438,6 +464,63 @@ class Game:
             if key in values:
                 lines.append(f"{out}={max(lo, min(hi, int(values[key])))}")
         files["character.txt"] = ("\n".join(lines) + "\n").encode("utf-8")
+        return files
+
+    def _build_from_mod(self, mod, base, change):
+        """{file name: bytes} of an added character made from mod `mod` of the library: its files, the costumes
+        with the pack's changes (grafted attacks, values, transformations, move names) where there are any, and
+        the animations and effects with the grafted attacks' (the mod's own, else the base character's)."""
+        from . import library
+        if library.info(mod) is None:
+            raise ModError(f"le mod « {mod} » n'est pas dans la bibliothèque de mods : importe-le d'abord")
+        grafts = change.get("transplants", [])
+        own = forms.read(self.mod_entries(mod)[fields.ENTRY_PARAM])
+        slots = self.transforms(base, change, {})
+        files = {}
+        for name in library.files(mod):
+            data = library.read(mod, name)
+            if re.fullmatch(r"chara_\dp(_dmg)?\.pak", name):
+                entries = pak.read(data)
+                changed = False
+                for t in grafts:
+                    try:
+                        transplant.apply_to_costume(entries, self.base_entries(int(t["from"])), int(t["slot"]),
+                                                    int(t["fromSlot"]), skill=transplant.is_skill(t))
+                    except transplant.IncompatibleGraft:
+                        raise ModError(self.graft_conflict(base, change, t))
+                    changed = True
+                for key, value in change.get("fields", {}).items():
+                    f = fields.BY_KEY.get(key)
+                    if f is None:
+                        raise ModError(f"paramètre inconnu : {key}")
+                    if f.where == "roster":
+                        continue  # (character.txt: health, ki, blast stocks)
+                    if f.kind == "scale":
+                        fields.scale_melee(entries, f.clamp(value))
+                    else:
+                        f.write(entries, f.clamp(value))
+                    changed = True
+                if slots != own:
+                    entries[fields.ENTRY_PARAM] = forms.write(entries[fields.ENTRY_PARAM], slots)
+                    changed = True
+                for lang, renames in change.get("texts", {}).items():
+                    if lang not in movetext.LANGS or not renames:
+                        continue
+                    ent = movetext.LANGS[lang][0]
+                    text = movetext.decode(entries[ent])
+                    for i, newname in renames.items():
+                        text = movetext.rename(text, int(i), newname)
+                    entries[ent] = movetext.encode(text)
+                    changed = True
+                files[name] = pak.write(entries) if changed else data  # (untouched: the mod's bytes as they are)
+            else:
+                files[name] = data
+        if grafts:
+            for k, data, limit, what in self._graft_packs(base, grafts, mod):
+                if (len(data) + SECTOR - 1) // SECTOR * SECTOR > limit:
+                    raise ModError(f"le pack d'{what} greffé est trop gros pour le jeu ({len(data)} octets, {limit} au "
+                                   "plus)")
+                files["chara_anm.pak" if k == 8 else "chara_eff.pak"] = data
         return files
 
     def build_roster(self, pack):
@@ -520,9 +603,7 @@ class Game:
                     for n, e in enumerate(pack.get("added", []) if added else [])}
         old_pkgs = set(self.manifest().get("packages", []))
         for folder in packages:
-            if os.path.exists(os.path.join(self.characters_dir(), folder)) and folder not in old_pkgs:
-                raise ModError(f"characters/{folder} existe déjà et ne vient pas de cet outil : retire-le à la main "
-                               "d'abord")
+            pass  # ("BT3MS NN ..." folders are always this tool's: one left by an apply that stopped is replaced)
         old = set(self._manifest_paths())
         for rel in built:
             if os.path.exists(os.path.join(self.mods_root, rel)) and rel not in old:
@@ -537,8 +618,12 @@ class Game:
             written.append(rel)
         for folder, files in sorted(packages.items()):
             d = os.path.join(self.characters_dir(), folder)
+            if os.path.isdir(d):
+                import shutil
+                shutil.rmtree(d)  # (no file of an older version of it left behind)
             os.makedirs(d, exist_ok=True)
             for name, data in files.items():
+                os.makedirs(os.path.dirname(os.path.join(d, name)), exist_ok=True)  # (voice_us/, voice_jp/)
                 with open(os.path.join(d, name), "wb") as f:
                     f.write(data)
         self._save_manifest({"files": written, "packages": sorted(packages), "pack": pack.get("name", "")})

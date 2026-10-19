@@ -41,6 +41,7 @@ def main():
     os.makedirs(work, exist_ok=True)
     icon = make_icon(os.path.join(work, "icon.ico"))
     r = subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--windowed",
+                        "--collect-all", "py7zr",  # (the .7z mods of the community: py7zr and its codecs)
                         "--name", NAME, "--contents-directory", RUNTIME, "--icon", icon, "--distpath", dist,
                         "--workpath", os.path.join(work, "work"), "--specpath", work,
                         os.path.join(ROOT, "studio.py")], cwd=ROOT)

@@ -23,11 +23,15 @@ jeu : ils ne partent pas avec l'outil quand tu le donnes à un ami).
   personnage du jeu : il ne remplace personne. Il apparaît en bas de la liste (« ＋ … ») et se règle comme les
   autres : son nom et sa forme (onglet Personnage), ses attaques, ses valeurs. Il demande l'**édition étendue** du
   port (plus bas).
-- **Mods de personnages…** (sous « Ajouter un personnage ») : importer un personnage fait par la communauté (un
-  dossier ou un zip de fichiers du jeu : « Vegeta(1733).unk », « …_1p.pak »…). L'outil reconnaît chaque fichier,
-  devine le personnage dont il part, et l'installe dans le dossier `characters` du jeu ; il apparaît en plus dans la
-  grille (édition étendue). La même fenêtre liste les mods installés, les retire, et donne leur **empreinte** : pour
-  jouer en ligne, elle doit être la même chez tous.
+- **Bibliothèque de mods…** (sous « Ajouter un personnage ») : les personnages faits par la communauté
+  (GameBanana…), importés une fois depuis leur **.7z**, leur **.zip** ou leur dossier. L'outil range chaque
+  personnage du mod (et chacune de ses formes), reconnaît celui du jeu qu'il remplaçait d'après les noms de fichiers
+  de la communauté (« Turles_1 » = Great Ape Turles), ou devine celui dont il est le plus proche d'après ses
+  animations. **Ajouter au pack** (ou double-clic) en fait un personnage ajouté : il part du mod (modèle,
+  animations, attaques, voix, portrait) et se modifie ensuite comme les autres (nom, valeurs, attaques reprises
+  d'un personnage du jeu). Les fichiers des mods restent sur ton PC, dans `%LOCALAPPDATA%\BT3 Mod Studio\library`.
+- **＋ Ajouter un personnage** propose deux départs : un personnage du jeu, ou un mod de la bibliothèque. Clic droit
+  sur un personnage ajouté de la liste : renommer, dupliquer, supprimer (ou la touche Suppr).
 - **À droite**, le personnage choisi tel qu'il apparaît à l'écran de sélection du jeu.
 - **Au milieu**, son nom, un résumé (vie, ki, blast stocks, Ultime) et les onglets :
   - **Personnage** :

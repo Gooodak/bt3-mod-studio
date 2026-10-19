@@ -163,6 +163,17 @@ def face_ready(game, chara, width=256):
     return os.path.exists(os.path.join(cache_dir(game), FACES % width, "%03d.png" % chara))
 
 
+def mod_face(data, width=256):
+    """PNG of a mod's large picture (its portrait file, in the game's own format), `width` wide; not kept (a mod's
+    picture is made on demand: it is quick, and the library is its own place)."""
+    from . import bpe
+    w, h, px = images.texture(bpe.decode(data))
+    px = images.fade_top(w, h, px, h // 7)
+    if w != width:
+        h, px = h * width // w, images.resize(w, h, px, width, h * width // w)
+    return images.png(width, h, px, level=1)
+
+
 def face(game, chara, width=256):
     """PNG of a character's large picture of the select screens, whole (the drawing is cut at the picture's edges,
     the game shows it in a frame of that width; a cut at the top fades in) and `width` wide; kept in the cache

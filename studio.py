@@ -349,11 +349,12 @@ class Studio(tk.Tk):
         self.count_lbl.pack(side="right", padx=px(4))
         add = self.add_btn = ttk.Button(side, text="＋  Ajouter un personnage", command=self.add_character)
         add.pack(fill="x", pady=(0, px(4)))
-        mods = self.mods_btn = ttk.Button(side, text="Mods de personnages…", style="Seg.TButton",
-                                          command=self.open_mods)
+        mods = self.mods_btn = ttk.Button(side, text="Bibliothèque de mods…", style="Seg.TButton",
+                                          command=self.open_library)
         mods.pack(fill="x", pady=(0, px(8)))
-        ui.Tooltip(mods, "Importer un personnage fait par la communauté (un dossier ou un zip de fichiers du jeu), "
-                         "voir et retirer les mods installés. Demande l'édition étendue du port.")
+        ui.Tooltip(mods, "Les personnages faits par la communauté (un .7z, un .zip ou un dossier de fichiers du "
+                         "jeu), importés une fois : chacun peut ensuite devenir un personnage ajouté, que tu "
+                         "modifies comme les autres. Demande l'édition étendue du jeu.")
         ui.Tooltip(add, "Un personnage EN PLUS dans la grille, fait à partir d'un personnage du jeu : ses attaques, "
                         "ses valeurs et son nom se changent ensuite comme pour les autres. Il demande l'édition "
                         "étendue du port.")
@@ -698,7 +699,7 @@ class Studio(tk.Tk):
         self.game_btn.configure(text=("● " if news else "") + text,
                                 style="GameHot.TButton" if news else "GameExt.TButton" if ed == "etendu" else
                                 "Game.TButton")
-        for b, text in ((self.add_btn, "＋  Ajouter un personnage"), (self.mods_btn, "Mods de personnages…")):
+        for b, text in ((self.add_btn, "＋  Ajouter un personnage"), (self.mods_btn, "Bibliothèque de mods…")):
             b.configure(state="normal" if self.extended else "disabled",
                         text=text if self.extended else text.rstrip("…") + " (édition étendue)")
 
@@ -761,7 +762,8 @@ class Studio(tk.Tk):
         if self.is_added(c):
             e = self.added()[c - ADDED]
             return f"  ＋ {self.name_of(c)}" + (f" – {e['form']}" if e.get("form") else "") + \
-                f"   (à partir de {self.names[int(e['base'])]})"
+                (f"   (mod {e.get('modName') or e['mod']})" if e.get("mod") else
+                 f"   (à partir de {self.names[int(e['base'])]})")
         ch = self.pack["characters"].get(str(c), {})
         text = "  " + self.names[c]
         if "base" in ch:
@@ -867,7 +869,9 @@ class Studio(tk.Tk):
         if self.is_added(c):
             self.title_var.set(self.name_of(c))
             self.badge_num.configure(text=f"ajouté n°{c - ADDED + 1}")
-            self.badge_rep.configure(text=f"À partir de {self.names[base]}")
+            e = self.ch()
+            self.badge_rep.configure(text=f"Mod : {e.get('modName') or e['mod']}" if e.get("mod") else
+                                     f"À partir de {self.names[base]}")
         else:
             self.title_var.set(self.names[c] + (f"   →   {self.names[base]}" if base != c else ""))
             self.badge_num.configure(text=f"n°{c:03d}")
@@ -960,7 +964,8 @@ class Studio(tk.Tk):
             return
         w, h = max(cv.winfo_width(), self.card_w), max(cv.winfo_height(), px(300))
         base = self.base_of(self.chara)
-        img = self._face(base)
+        e = self.ch() if self.is_added(self.chara) else {}
+        img = (self._mod_face(e["mod"]) if e.get("mod") else None) or self._face(base)
         plate = ui.pz(78)
         ih = img.height() if img is not None else px(400)
         if (w, h, ih, plate) != self.portrait_drawn:
@@ -1123,7 +1128,16 @@ class Studio(tk.Tk):
         w, c, ch = self.idw, self.chara, self.ch()
         base = int(ch["base"]) if "base" in ch else None
         added = self.is_added(c)
-        if added:
+        if added and ch.get("mod"):
+            w["base_box"].title.configure(text="Fait à partir d'un mod")
+            w["base_box"].sub.configure(text=f"« {ch.get('modName') or ch['mod']} » (bibliothèque de mods)")
+            ui.set_note(w["base_hint"], f"{self.name_of(c)} vient d'un mod de la communauté : son modèle, ses "
+                                        "animations, ses attaques et sa voix sont ceux du mod, et tu les changes dans "
+                                        "les autres onglets comme pour les autres. Le personnage ci-dessous est celui "
+                                        "du jeu dont il prend le comportement (l'ordinateur le joue comme lui) et ce "
+                                        "qui manquerait au mod.")
+            w["unbase"].configure(text="Supprimer ce personnage ajouté", state="normal")
+        elif added:
             w["base_box"].title.configure(text="Fait à partir de")
             w["base_box"].sub.configure(text="un personnage EN PLUS dans la grille (édition étendue)")
             ui.set_note(w["base_hint"], f"{self.name_of(c)} est un personnage ajouté : il a sa propre case, après "
@@ -1597,6 +1611,13 @@ class Studio(tk.Tk):
         finally:
             m.grab_release()
 
+    def _add_from_game_pick(self):
+        self._add_from_game = True
+        try:
+            self.add_character()
+        finally:
+            self._add_from_game = False
+
     def rename_added(self):
         """The added character's name is typed in the Personnage page: there, with the cursor in it."""
         self.show_tab("Personnage")
@@ -1618,7 +1639,19 @@ class Studio(tk.Tk):
         self.status.set(f"Copie faite : {e['name']}")
 
     def add_character(self, base=None):
-        """A new added character, made from a character of the game (chosen in the picker, or given)."""
+        """A new added character, made from a character of the game (chosen in the picker, or given), or from a
+        mod of the library (the button offers both)."""
+        if base is None and not getattr(self, "_add_from_game", False):
+            m = tk.Menu(self, tearoff=0, bg=ui.CARD, fg=ui.TEXT, activebackground=ui.SELECT,
+                        activeforeground="#ffffff", font=ui.FONT, bd=1, relief="solid")
+            m.add_command(label="À partir d'un personnage du jeu…", command=self._add_from_game_pick)
+            m.add_command(label="À partir d'un mod de la bibliothèque…", command=self.open_library)
+            b = self.add_btn
+            try:
+                m.tk_popup(b.winfo_rootx(), b.winfo_rooty() + b.winfo_height())
+            finally:
+                m.grab_release()
+            return
         if base is None:
             base = self._pick("Ajouter un personnage : à partir de quel personnage du jeu ?",
                               current=self.base_of(self.chara) if self.chara is not None else None)
@@ -1874,6 +1907,183 @@ class Studio(tk.Tk):
         win.deiconify()
         win.after(20, lambda: ui.dark_title(win, show=not getattr(ui.Picker, "HIDDEN", False)))
 
+    def _mod_face(self, mod):
+        """The large picture of a mod of the library (its own portrait), or None."""
+        key = ("mod", mod, self.card_w)
+        img = self.faces.get(key)
+        if img is None:
+            try:
+                from bt3mod import library
+                img = tk.PhotoImage(data=appcache.mod_face(library.read(mod, "portrait.bin"), self.card_w))
+            except Exception:
+                return None
+            self.faces[key] = img
+        return img
+
+    def add_from_mod(self, info):
+        """A new added character made from a mod of the library (its files, the pack's changes on top)."""
+        e = modpack.add(self.pack, int(info["base"]), info["name"][:30])
+        e.update(mod=info["id"], modName=info["mod"], modMark=info["mark"])
+        if self.only_mod:
+            self._filter_mod(False)
+        self.refresh_list()
+        self.select(ADDED + len(self.added()) - 1)
+        self.show_tab("Personnage")
+        self._refresh_row()
+        self.status.set(f"Personnage ajouté depuis le mod « {info['mod']} » : {info['name']}. Change son nom, ses "
+                        "attaques et ses valeurs comme pour les autres.")
+
+    def missing_mods(self):
+        """[(name, mod)] of the pack's added characters whose mod is not in the library, or not the same version."""
+        from bt3mod import library
+        out = []
+        for e in self.added():
+            if e.get("mod"):
+                i = library.info(e["mod"])
+                if i is None or (e.get("modMark") and i.get("mark") != e["modMark"]):
+                    out.append((e.get("name", ""), e.get("modName") or e["mod"], "absent" if i is None else
+                                "autre version"))
+        return out
+
+    def _warn_missing_mods(self):
+        miss = self.missing_mods()
+        if miss:
+            messagebox.showwarning(TITLE, "Ce pack utilise des mods de personnages qui ne sont pas dans ta "
+                                          "bibliothèque (ou pas la même version) :\n\n"
+                                   + "\n".join(f"- {n} : mod « {m} » ({why})" for n, m, why in miss)
+                                   + "\n\nDemande ces mods à celui qui t'a donné le pack, puis importe-les dans "
+                                     "« Bibliothèque de mods… ». Sans eux, ces personnages ne peuvent pas aller "
+                                     "dans le jeu.")
+
+    def open_library(self):
+        """The library of mods: import the community's character mods, add one to the pack, remove one."""
+        from bt3mod import library
+        win = tk.Toplevel(self)
+        win.withdraw()
+        win.title("Bibliothèque de mods")
+        win.configure(bg=ui.PANEL)
+        win.transient(self)
+        box = ttk.Frame(win, style="Panel.TFrame", padding=(px(16), px(14), px(16), px(14)))
+        box.pack(fill="both", expand=True)
+        ttk.Label(box, text="Bibliothèque de mods", style="Panel.Title.TLabel").pack(anchor="w")
+        text = ("Les personnages faits par la communauté (GameBanana…), importés une fois depuis leur .7z, leur .zip "
+                "ou leur dossier. Chacun peut devenir un personnage ajouté : il part du mod (modèle, animations, "
+                "attaques, voix), et tu le modifies ensuite comme les autres. Les fichiers des mods restent sur ton "
+                "PC : pour jouer ensemble, envoyez-vous les mêmes mods (même empreinte).")
+        if not self.extended:
+            text += "\n\n⚠ Ton jeu est l'édition officielle : les personnages ajoutés demandent l'édition étendue."
+        ttk.Label(box, text=text, style="Panel.Muted.TLabel", wraplength=ui.pz(640), justify="left").pack(
+            anchor="w", pady=(px(4), px(10)))
+        import tkinter.font as tkfont
+        st = ttk.Style(self)
+        st.configure("Mods.Treeview", rowheight=tkfont.Font(name=ui.FONT, exists=True).metrics("linespace") + px(10))
+        st.configure("Mods.Treeview.Heading", background=ui.FIELD, foreground=ui.TEXT, font=ui.SMALL, relief="flat")
+        tree = ttk.Treeview(box, columns=("name", "mod", "base", "mark"), show="headings", height=10,
+                            selectmode="browse", style="Mods.Treeview")
+        for col, title, width in (("name", "Personnage", 190), ("mod", "Mod", 230), ("base", "Remplace / joue comme",
+                                                                                       200), ("mark", "Empreinte", 90)):
+            tree.heading(col, text=title)
+            tree.column(col, width=ui.pz(width), anchor="w")
+        tree.pack(fill="both", expand=True)
+        busy = ttk.Label(box, text="", style="Panel.Accent.TLabel")
+        busy.pack(anchor="w", pady=(px(8), 0))
+        known = {}
+
+        def fill():
+            tree.delete(*tree.get_children())
+            known.clear()
+            for e in library.entries():
+                known[e["id"]] = e
+                rel = (f"était {self.names[e['slot']]}" if e.get("slot") is not None else
+                       f"joue comme {self.names[int(e['base'])]}")
+                tree.insert("", "end", iid=e["id"], values=(e["name"], e["mod"], rel, e["mark"]))
+            if not known:
+                busy.configure(text="La bibliothèque est vide : importe un mod (.7z, .zip ou dossier).")
+
+        def chosen():
+            sel = tree.selection()
+            return known.get(sel[0]) if sel else None
+
+        def do_import(folder):
+            if folder:
+                src = filedialog.askdirectory(parent=win, title="Le dossier du mod")
+            else:
+                src = filedialog.askopenfilename(parent=win, title="Le mod à importer",
+                                                 filetypes=[("Mod (.7z, .zip)", "*.7z *.zip"), ("Tous", "*.*")])
+            if not src:
+                return
+            busy.configure(text=f"Import de « {os.path.basename(src)} »… (jusqu'à une demi-minute pour un gros pack)")
+            result = {}
+
+            def work():
+                try:
+                    result["r"] = library.import_mod(self.game, src)
+                except (library.LibraryError, OSError, ValueError) as e:
+                    result["error"] = str(e)
+                except Exception as e:  # (a damaged archive: said, not lost in the thread)
+                    result["error"] = f"archive illisible ({e})"
+            t = threading.Thread(target=work, daemon=True)
+            t.start()
+
+            def wait():
+                if t.is_alive():
+                    win.after(200, wait)
+                    return
+                busy.configure(text="")
+                if "error" in result:
+                    messagebox.showerror(TITLE, f"Import impossible : {result['error']}", parent=win)
+                    return
+                r = result["r"]
+                fill()
+                lines = "\n".join(f"- {e['name']} ({'était ' + self.names[e['slot']] if e.get('slot') is not None else 'joue comme ' + self.names[int(e['base'])]})"
+                                  for e in r["entries"])
+                more = f"\n\n{len(r['notes'])} fichier(s) laissé(s) de côté (stages, autres)." if r["notes"] else ""
+                messagebox.showinfo(TITLE, f"Mod « {r['mod']} » importé : {len(r['entries'])} personnage(s).\n\n"
+                                           f"{lines}{more}\n\nChoisis-en un puis « Ajouter au pack ».", parent=win)
+            win.after(200, wait)
+
+        def do_add():
+            e = chosen()
+            if e is None:
+                return
+            if not self.extended:
+                messagebox.showinfo(TITLE, "Les personnages ajoutés demandent l'édition étendue du jeu (clique sur "
+                                           "« Jeu : … » en haut).", parent=win)
+                return
+            self.add_from_mod(e)
+            win.destroy()
+
+        def do_remove():
+            e = chosen()
+            if e is None:
+                return
+            used = [a.get("name", "") for a in self.added() if a.get("mod") == e["id"]]
+            if not messagebox.askyesno(TITLE, f"Retirer « {e['name']} » (mod « {e['mod']} ») de la bibliothèque ?"
+                                       + (f"\n\nLe pack l'utilise pour : {', '.join(used)}. Ces personnages ne "
+                                          "pourront plus aller dans le jeu." if used else ""), parent=win):
+                return
+            library.remove(e["id"])
+            fill()
+
+        tree.bind("<Double-1>", lambda ev: do_add())
+        row = ttk.Frame(box, style="Panel.TFrame")
+        row.pack(fill="x", pady=(px(12), 0))
+        ttk.Button(row, text="Importer un mod (.7z, .zip)…", style="Accent.TButton",
+                   command=lambda: do_import(False)).pack(side="left")
+        ttk.Button(row, text="Importer un dossier…", command=lambda: do_import(True)).pack(side="left", padx=px(8))
+        ttk.Button(row, text="Ajouter au pack", command=do_add).pack(side="left")
+        ttk.Button(row, text="Retirer", command=do_remove).pack(side="left", padx=px(8))
+        ttk.Button(row, text="Fermer", command=win.destroy).pack(side="right")
+        win.bind("<Escape>", lambda ev: win.destroy())
+        fill()
+        self.library_dialog = win
+        win.update_idletasks()
+        w = win.winfo_reqwidth()
+        win.geometry(f"+{self.winfo_rootx() + (self.winfo_width() - w) // 2}+{self.winfo_rooty() + px(80)}")
+        win.attributes("-alpha", 0.0)
+        win.deiconify()
+        win.after(20, lambda: ui.dark_title(win, show=not getattr(ui.Picker, "HIDDEN", False)))
+
     def open_mods(self):
         """The character mods installed in the game (the extended edition's characters folder): import, remove."""
         from bt3mod import importer
@@ -2049,6 +2259,7 @@ class Studio(tk.Tk):
         self.status.set(f"Pack « {pack.get('name', '')} » chargé depuis un code "
                         f"({len(pack['characters'])} personnage(s) modifié(s), empreinte {modpack.fingerprint(pack)}). "
                         "« Appliquer au jeu » pour y jouer." + self._added_note())
+        self.after(100, self._warn_missing_mods)
         return None
 
     def open_pack(self):
@@ -2072,6 +2283,7 @@ class Studio(tk.Tk):
         self._reselect()
         self.status.set(f"Pack ouvert : {path} ({len(self.pack['characters'])} personnage(s) modifié(s))."
                         + self._added_note())
+        self.after(100, self._warn_missing_mods)
 
     def save_pack(self):
         """Saves the pack in a file chosen by the person; True when saved."""
@@ -2154,7 +2366,25 @@ class Studio(tk.Tk):
         messagebox.showinfo(TITLE, f"{n} fichier(s) retiré(s). Le jeu est revenu à l'original.")
 
 
+def check_archive(src, out):
+    """`BT3 Mod Studio.exe --check-archive <archive> <result file>`: the program reads a mod's archive as an import
+    would and writes what it found (tools/library_check.py: the built program can open the community's .7z)."""
+    import tempfile
+    from bt3mod import library
+    try:
+        folder = library.extract(src, tempfile.mkdtemp(prefix="bt3check_"))
+        groups, notes = library.scan(folder)
+        text = "ok " + " ".join(sorted(groups))
+    except Exception as e:
+        text = f"error {e}"
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "--check-archive":
+        check_archive(sys.argv[2], sys.argv[3])
+        return
     try:  # sharp text on screens with a zoom above 100 % (the sizes follow: studio_ui.px)
         import ctypes
         ctypes.windll.shcore.SetProcessDpiAwareness(1)

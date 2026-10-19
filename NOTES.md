@@ -62,6 +62,25 @@ En ligne, tous les joueurs doivent avoir la même version (le jeu le vérifie).
 - Publier une version de l'outil : monter `TOOL_VERSION`, `py -I tools/build_exe.py`, zipper (exe + runtime + guides
   dans un dossier `bt3-mod-studio/`), `gh release create vX.Y.Z <zip> -R Gooodak/bt3-mod-studio`.
 
+## Bibliothèque de mods (personnages de la communauté)
+
+- `bt3mod/library.py` : un mod (.7z via py7zr, .zip, dossier) est découpé en personnages et formes, d'après les
+  noms de fichiers de la communauté (`PZS3US1\<Groupe>_1p.pak`, `_anm`, `_eff`, `_Voice_US`, `_img.cdbt`,
+  `_tag_P1.dbt` ; `PZS3US2\<Groupe>_<500+n>_US.adx`). `bt3mod/slotnames.py` : les 161 noms d'emplacements
+  (« Turles_1 » = 122). Rangés dans `%LOCALAPPDATA%\BT3 Mod Studio\library\<mod>__<groupe>\` (format paquet +
+  `info.json` : nom, mod, emplacement, personnage de base deviné, empreinte). Personnage de base d'un nom nouveau :
+  celui dont il partage le plus d'animations (Frost → Mecha Frieza).
+- Un personnage ajouté peut partir d'un mod (`"mod"` dans le pack, avec `modName`, `modMark`) : `Game.source_entries`
+  lit le costume du mod ; `build_added` → `_build_from_mod` recopie ses fichiers, modifiés seulement s'il y a des
+  changements (valeurs, attaques greffées d'un personnage du jeu, transformations, noms).
+- Le code de partage ne contient que la référence au mod ; l'outil signale au chargement les mods absents ou d'une
+  autre version (empreinte).
+- Vrais mods de test (licence CC BY-NC-ND, usage personnel, jamais partagés) : `testkit\community_mods\` (Turles
+  Super Saiyan, DBZL Exclusives Modpack) ; test : `py -I tools/library_check.py` (6 cas, dont 2 combats).
+- À venir : attaques prises **dans un mod**, apparence (skin) d'un mod avec vérification du squelette, voix ;
+  remplacer un emplacement par un mod (Turles_1 à la place de Great Ape Turles) ; stages des mods (le port sait
+  ajouter des stages : dossier `stages`).
+
 ## Jeu en ligne entre amis
 
 - Même pack (même code `BT3-1-…`, même empreinte dans « Partager… »), mêmes mods de personnages importés (même

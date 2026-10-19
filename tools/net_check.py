@@ -85,11 +85,17 @@ def press_table(path, blanks, seed=1):
     (the pause and "back" would leave the fight)."""
     import random
     rnd = random.Random(seed)
-    usable = [(0, 4), (0, 5), (0, 6), (0, 7), (1, 0), (1, 1), (1, 2), (1, 3), (1, 5), (1, 6), (1, 7)]
+    usable = [(0, 4), (0, 5), (0, 6), (0, 7), (1, 0), (1, 1), (1, 2), (1, 3), (1, 6), (1, 7)]  # (no circle either)
     out = bytearray()
     state = [None, None]
     for blank in range(blanks):
         for pad in range(2):
+            if blank < 3600:  # (the session starts at the character select near blank 2009: only cross until
+                # the fight is on, so that the menus are only ever confirmed: a random press there could take the
+                # game back to the main menu, which ends a session; the host's random seed decides the menus' path)
+                b = [0xFF, 0xFF & ~(1 << 6)] if blank % 30 < 6 else [0xFF, 0xFF]
+                out += bytes(b) + bytes([0x80] * 4) + bytes(0xFF if (k < 8 and b[1] != 0xFF) else 0 for k in range(12))
+                continue
             if state[pad] is None or state[pad][0] <= blank:
                 held = rnd.sample(usable, rnd.choice((0, 1, 1, 2)))
                 if rnd.random() < 0.35:
@@ -103,12 +109,12 @@ def press_table(path, blanks, seed=1):
     open(path, "wb").write(bytes(out))
 
 
-def fight(chars, seconds=150):
+def fight(chars, seconds=150, seed=1):
     """Both copies in a session, windowless, playing one table of random presses, both fighters the added
     character: did a battle start, and did the two games stay the same (the netcode compares them itself)?"""
     tmp = tempfile.mkdtemp(prefix="bt3fight_")
     table = os.path.join(tmp, "presses.bin")
-    press_table(table, 60 * 600)
+    press_table(table, 60 * 600, seed)
     logs = [os.path.join(tmp, "host.log"), os.path.join(tmp, "join.log")]
     hashes = [os.path.join(tmp, "host_hash.txt"), os.path.join(tmp, "join_hash.txt")]
     extra = dict(BT3_GS="none", BT3_NET_SCRIPT=table, BT3_TEST_CHARA="0xC6,0xC6", BT3_CHARA_LOG="1")
@@ -181,18 +187,26 @@ def lines(text, *keys):
 
 
 def fight_check():
+    """What is checked is that an online fight stays the same on both games. Reaching the fight goes through the
+    menus with presses, and the host's random seed (drawn at each session) changes their path: now and then the
+    session goes back to the main menu before any fight (no difference: both games do it at the same blank). So up
+    to three tries, each with another table, to see a fight; a difference fails at once, no fight in three fails."""
     pk = packages()
-    text, fights, tmp = fight((pk["chars_a"], pk["chars_b"]))
-    battles = [t.count("a battle is set up") for t in text]
-    differ = [l for t in text for l in t.splitlines() if "the two games differ" in l]
-    own = all("Vegeta Test_1p.pak" in t for t in text)  # (BT3_CHARA_LOG: the package's model was served)
-    both = sorted(set(fights[0]) & set(fights[1]))
-    unequal = [b for b in both if fights[0][b] != fights[1][b]]
-    hits = len({fights[0][b][1:] for b in both})  # (how many different health pairs: the fighters hit each other)
+    for attempt in (1, 2, 3):
+        text, fights, tmp = fight((pk["chars_a"], pk["chars_b"]), seed=attempt)
+        battles = [t.count("a battle is set up") for t in text]
+        differ = [l for t in text for l in t.splitlines() if "the two games differ" in l]
+        own = all("Vegeta Test_1p.pak" in t for t in text)  # (BT3_CHARA_LOG: the package's model was served)
+        both = sorted(set(fights[0]) & set(fights[1]))
+        unequal = [b for b in both if fights[0][b] != fights[1][b]]
+        hits = len({fights[0][b][1:] for b in both})  # (different health pairs: the fighters hit each other)
+        if differ or unequal or len(both) > 600:
+            break
+        print(f"      (try {attempt}: the session went back to the menus before a fight; another table)", flush=True)
     check("online fight with the added character: the same on both",
           min(battles) > 0 and not differ and len(both) > 600 and not unequal and hits > 2 and own,
           f"{len(both)} fight blanks compared, {len(unequal)} differ, {hits} health states, added character "
-          f"{'served' if own else 'NOT seen'}{', ' + differ[0][10:90] if differ else ''}  (logs: {tmp})")
+          f"{'served' if own else 'NOT seen'}, try {attempt}{', ' + differ[0][10:90] if differ else ''}  (logs: {tmp})")
 
 
 def main():
