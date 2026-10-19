@@ -22,7 +22,7 @@ TRANSFORM_KEYS = ["R3 + ←", "R3 + ↑", "R3 + →", "R3 + ↓   retour"]
 SPECIALS = [("Blast 1 n°1", "skill", 0, 0), ("Blast 1 n°2", "skill", 1, 1), ("Blast 2 n°1", "super", 0, 2),
             ("Blast 2 n°2", "super", 1, 3), ("Ultime", "super", 2, 4)]
 KIBLAST_COLS = [("damage", "Dégâts"), ("guardDamage", "Si gardé"), ("ki", "Coût en ki"), ("speed", "Vitesse"),
-                ("turn", "Guidage"), ("time", "Durée"), ("hits", "Coups")]
+                ("turn", "Guidage"), ("time", "Durée")]
 PAGES = ["Personnage", "Attaques", "Stats", "Rafales de ki", "Déplacements"]
 ADDED = 1000  # the list's id of the pack's added character n is ADDED + n (the game gives it 198 + n or so)
 MAIN_WIDTH = 680  # the width the pages need (1/96 inch at the normal text size): narrower, the large picture goes
@@ -70,6 +70,7 @@ class FieldRow:
         if self.reset:
             ui.Tooltip(self.reset, "Remettre la valeur d'origine")
         self.ent.bind("<Button-3>", lambda e: self.revert())
+        self.ent.bind("<FocusOut>", lambda e: app._on_field_out(self), add="+")
         ui.Tooltip(self.ent, self.tip)
         self.var.trace_add("write", lambda *a: app.on_field(self))
         app.rows[f.key] = self
@@ -108,7 +109,8 @@ class FieldRow:
             widget.configure(**kw)
             widget.last = kw
 
-    def paint(self, value=None, bad=False):
+    def paint(self, value=None, bad=False, note=None):
+        """note: a value out of bounds was typed and `value` (the bound) is kept: says it next to the box."""
         changed = self.changed()
         if bad:
             self._set(self.ent, bg=ui.BAD_BG, fg=ui.TEXT)
@@ -120,7 +122,9 @@ class FieldRow:
         text = meaning(self.f, value) if value is not None and not bad else ""
         if changed and o is not None:
             text += ("   " if text else "") + f"origine {fmt(self.f, o)}"
-        self._set(self.info, text=text)
+        if note:
+            text = note
+        self._set(self.info, text=text, style="Card.Warn.TLabel" if note else "Card.Muted.TLabel")
         self._set(self.reset, text=self.reset_text if changed else "", takefocus=changed)
 
     def revert(self):
@@ -1356,7 +1360,8 @@ class Studio(tk.Tk):
                             command=lambda k=kind, s=slot: self._set_graft(k, s, None))
             rm.pack(side="left", padx=px(4))
             ui.Tooltip(rm, "Garder l'attaque d'origine")
-            keys = [f.key for f in fields.FIELDS if f.key.startswith(prefix + ".") and f.key.endswith("." + str(slot))]
+            keys = [f.key for f in fields.FIELDS if f.key.startswith(prefix + ".") and
+                    f.key.endswith("." + str(slot)) and not f.hidden]
             ttk.Frame(box, style="Card.TFrame", height=px(6)).pack()
             self._rows(box, keys, cols=1)
             self.atk_cards.append(card)
@@ -1428,17 +1433,42 @@ class Studio(tk.Tk):
         self._paint_name(item["entry"], str(i) in texts)
         self._refresh_row()
 
+    def _attack_rows(self, kind):
+        """Every attack of the game a slot of this kind can take: [(character, its slot, its name)]. Blast 1: the
+        first two specials of a move list; Blast 2 and Ultimate: the next three (lists in the standard order)."""
+        rows = []
+        for k in range(game.CHARA_COUNT):
+            moves = [m.strip() for m in (self.moves[k] if self.moves else self.game.move_names(k))]
+            if kind == "skill":
+                rows += [(k, j, moves[j]) for j in range(min(2, len(moves))) if moves[j]]
+            elif len(moves) == 6:
+                rows += [(k, j, moves[2 + j]) for j in range(3) if moves[2 + j]]
+        return rows
+
     def _on_graft_pick(self, kind, slot):
-        cur = self._grafts().get((kind, slot))
-        what = (fields.SKILL_SLOTS if kind == "skill" else fields.SUPER_SLOTS)[slot]
-        new = self._pick(f"Remplacer le {what} par l'attaque d'un autre personnage",
-                         current=int(cur["from"]) if cur else None, allow_none="Garder la sienne")
-        if new is None:
+        p, rows = self._attack_picker(kind, slot)
+        self.wait_window(p)
+        if p.result is None:
             return
-        if new == ui.Picker.NONE:
+        if p.result == ui.Picker.NONE:
             self._set_graft(kind, slot, None)
         else:
-            self._set_graft(kind, slot, new, int(cur["fromSlot"]) if cur else slot)
+            k, j, _ = rows[p.result]
+            self._set_graft(kind, slot, k, j)
+
+    def _attack_picker(self, kind, slot):
+        """The window to choose the attack slot `slot` takes, and its rows (_attack_rows)."""
+        cur = self._grafts().get((kind, slot))
+        slots = fields.SKILL_SLOTS if kind == "skill" else fields.SUPER_SLOTS
+        rows = self._attack_rows(kind)
+        names = [f"{name}   ·   {self.names[k]}   ({slots[j]})" for k, j, name in rows]
+        icons = {i: self.icons.get(k) for i, (k, j, _) in enumerate(rows) if self.icons.get(k) is not None}
+        current = next((i for i, (k, j, _) in enumerate(rows)
+                        if cur and (k, j) == (int(cur["from"]), int(cur["fromSlot"]))), None)
+        p = ui.Picker(self, f"Attaque à mettre en {slots[slot]}", names, icons, allow_none="Garder la sienne",
+                      current=current, numbers=False, width=600,
+                      hint="Tape le nom d'une attaque, d'un personnage, ou les deux (« spirit goku »).")
+        return p, rows
 
     def _on_graft_attack(self, kind, slot):
         cur = self._grafts().get((kind, slot))
@@ -1486,8 +1516,9 @@ class Studio(tk.Tk):
 
     def _page_kiblasts(self, inner):
         box = ui.card(inner, "Rafales de ki", "10 000 = 1 barre de vie · 20 000 = 1 barre de ki")
-        ui.hint(box, "Passe la souris sur une case pour voir son unité et sa valeur d'origine ; clic droit pour la "
-                     "remettre.")
+        ui.hint(box, "Vitesse en x10 km/h (le temps que met le tir à arriver) · Guidage en degrés par seconde (à quel "
+                     "point il suit l'adversaire) · Durée en secondes avant qu'il disparaisse. Clic droit sur une case "
+                     "pour remettre sa valeur d'origine.")
         grid = ttk.Frame(box, style="Card.TFrame")
         grid.pack(anchor="w")
         for j, (_, label) in enumerate(KIBLAST_COLS):
@@ -1499,8 +1530,7 @@ class Studio(tk.Tk):
 
     def _page_moves(self, inner):
         box = ui.card(inner, "Vitesses de déplacement", "x10 km/h")
-        ui.hint(box, "Le rôle exact de chacune des 20 vitesses n'est pas encore identifié. Pour un personnage plus "
-                     "rapide ou plus lent, change-les toutes du même pourcentage :")
+        ui.hint(box, "Pour un personnage plus rapide ou plus lent, change-les toutes du même pourcentage :")
         row = ttk.Frame(box, style="Card.TFrame")
         row.pack(anchor="w", pady=(0, px(10)))
         pct = tk.StringVar(value="120")
@@ -1511,8 +1541,8 @@ class Studio(tk.Tk):
                    command=lambda: self._scale_moves(pct.get())).pack(side="left", padx=px(10))
         ttk.Button(row, text="Tout remettre d'origine", style="Link.TButton",
                    command=lambda: self._scale_moves(None)).pack(side="left")
-        keys = [f"move.speed.{i}" for i in range(20)]
-        self._rows(box, keys, cols=2, labels={k: f"Vitesse {i + 1}" for i, k in enumerate(keys)})
+        for title, ids in fields.MOVE_GROUPS:
+            self._rows(ui.card(inner, title), [f"move.speed.{i}" for i in ids])
 
     def _scale_moves(self, pct):
         try:
@@ -1540,20 +1570,31 @@ class Studio(tk.Tk):
             row.paint(bad=True)
             self.status.set(f"« {text} » n'est pas un nombre")
             return
-        if f.clamp(v) != v:
-            row.paint(bad=True)
-            self.status.set(f"{f.label} : entre {fmt(f, f.lo)} et {fmt(f, f.hi)}")
-            return
+        note = None
+        if f.clamp(v) != v:  # (out of bounds: the bound is kept, and said next to the box until it loses the focus)
+            high = v > f.hi
+            v = f.clamp(v)
+            note = f"→ {fmt(f, v)} gardé (le {'maximum' if high else 'minimum'})"
+            if row.compact or row.info is None:
+                note = None
         values = self.entry().setdefault("fields", {})
         o = self.orig[f.key]
         if (abs(v - o) < 1e-4) if f.is_float else v == o:
             values.pop(f.key, None)
         else:
             values[f.key] = v
-        row.paint(v)
+        row.paint(v, note=note)
         self._refresh_row()
         m = meaning(f, v)
-        self.status.set(f"{f.slot} — {f.label} : {fmt(f, v)}" + (f"  ({m})" if m else ""))
+        self.status.set(f"{f.slot} — {f.label} : {fmt(f, v)}" + (f"  ({m})" if m else "") +
+                        (f"  — de {fmt(f, f.lo)} à {fmt(f, f.hi)}" if note else ""))
+
+    def _on_field_out(self, row):
+        """Leaving a box: it shows the value kept (the bound after a value out of bounds, the last good one after
+        something that is not a number)."""
+        v = self.value(row.f.key)
+        if v is not None and row.var.get().strip().replace(",", ".") != fmt(row.f, v):
+            row.show(v)
 
     def _on_nick(self):
         if self.loading:
@@ -2256,8 +2297,19 @@ class Studio(tk.Tk):
         self.status.set(f"Pack « {pack.get('name', '')} » chargé depuis un code "
                         f"({len(pack['characters'])} personnage(s) modifié(s), empreinte {modpack.fingerprint(pack)}). "
                         "« Appliquer au jeu » pour y jouer." + self._added_note())
+        self._drop_hidden()
         self.after(100, self._warn_missing_mods)
         return None
+
+    def _drop_hidden(self):
+        """Values earlier versions showed and the test game found useless: taken out of the pack just loaded, said
+        once (the pack then has changes to save)."""
+        why = fields.drop_hidden(self.pack)
+        if why:
+            self._reselect()
+            messagebox.showinfo(TITLE, "Des valeurs de ce pack ont été retirées, car elles ne font pas ce que "
+                                       "l'outil annonçait :\n\n• " + "\n• ".join(why) +
+                                "\n\nEnregistre le pack pour garder ce nettoyage.")
 
     def open_pack(self):
         if not self._keep_changes():
@@ -2278,6 +2330,7 @@ class Studio(tk.Tk):
         self._reselect()
         self.status.set(f"Pack ouvert : {path} ({len(self.pack['characters'])} personnage(s) modifié(s))."
                         + self._added_note())
+        self._drop_hidden()
         self.after(100, self._warn_missing_mods)
 
     def save_pack(self):

@@ -122,6 +122,11 @@ def main():
     app.menu_vars["menuName"].set("Vegeta X")
     app.show_tab("Stats")
     pump(app)
+    app.rows["roster.health"].var.set("900000")  # (out of bounds: the maximum is kept, and said next to the box)
+    pump(app)
+    kept, said = app.added()[-1]["fields"].get("roster.health"), app.rows["roster.health"].info.cget("text")
+    check("a value too high: the maximum kept, said next to it", kept == 150000 and "150000" in said,
+          f"kept {kept}, says « {said} »")
     app.rows["roster.health"].var.set("70000")
     app.rows["roster.kiStart"].var.set("100000")  # (an Ultimate needs ki)
     app._set_graft("super", 2, 33, 0)

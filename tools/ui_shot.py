@@ -1,6 +1,6 @@
 """Screenshots of the tool's own window, to check the interface without a person at the screen.
     py -I tools/ui_shot.py OUT_DIR STEP ...
-Steps: add:BASE=NAME  select:N  tab:NAME  set:KEY=VALUE  base:N  menu:N=TEXT  graft:SLOT=FROM/FROMSLOT  skill:SLOT=FROM/FROMSLOT  search:TEXT
+Steps: add:BASE=NAME  attacks:KIND/SLOT/SEARCH  select:N  tab:NAME  set:KEY=VALUE  base:N  menu:N=TEXT  graft:SLOT=FROM/FROMSLOT  skill:SLOT=FROM/FROMSLOT  search:TEXT
        scroll:FRACTION  picker  share  help  zoom:SCALE  focus:TAB  shot:NAME  wait:MS  size:WxH
 The window is fully transparent (PrintWindow still gets its picture), so nothing shows on the desktop."""
 import ctypes
@@ -121,6 +121,18 @@ def main(out, steps):
                 app.update()
                 time.sleep(0.02)
             capture(int(p.wm_frame(), 16), os.path.join(out, "picker.png"))
+            p.destroy()
+        elif cmd == "attacks":  # attacks:KIND/SLOT/SEARCH = the window to choose an attack, with a search typed
+            kind, slot, q = (arg.split("/", 2) + ["", ""])[:3]
+            ui.Picker.HIDDEN = True
+            p, _rows = app._attack_picker(kind, int(slot))
+            p.grab_release()
+            p.q.set(q)
+            for _ in range(10):
+                app.update()
+                time.sleep(0.02)
+            capture(int(p.wm_frame(), 16), os.path.join(out, "attacks.png"))
+            print("attacks shown:", len(p.list.visible))
             p.destroy()
         elif cmd == "add":  # an added character made from BASE (=NAME), shown
             base, _, name = arg.partition("=")

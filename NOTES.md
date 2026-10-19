@@ -69,6 +69,22 @@ En ligne, tous les joueurs doivent avoir la même version (le jeu le vérifie).
   commande, rien n'était copié (corrigé en 1.1.1). **Les versions ≤ 1.1.0 ne peuvent donc pas se mettre à jour
   seules** : il faut une fois télécharger le zip de la page Releases et le décompresser par-dessus (outil fermé).
 
+## Ce que font vraiment les valeurs (essais dans le jeu de test, 19/10/2026)
+
+- Vie : le jeu compte au-delà de 7 barres (90 000 et 150 000 essayés, `hp=150000/150000`), l'écran n'en dessine que
+  7. Limite de l'outil : 150 000 (comme les paquets du port).
+- Vitesse des tirs de ki : marche (tir de base 300 → touche en 16 images ; 2000 → 6 ; 50 → 68).
+- « Nombre de coups » d'un tir de ki : aucun effet → caché.
+- « Nombre de projectiles » d'une technique (BtlSuperData.shots) : n'ajoute pas de projectile, divise les dégâts
+  de chaque coup (Kamehameha 6 × 1350 → 6 × 280 avec 5 ; Chou Makouhou Barrage, 3 d'origine, avec 8 : toujours 3
+  coups, 820 chacun) → caché.
+- Vitesse du projectile d'une technique : plus lent se voit (Kamehameha 400 → premier coup en 46 images ; 100 → 70),
+  plus rapide peu (1600 → 40) : l'animation garde son rythme.
+- Les 20 vitesses de déplacement sont nommées d'après les actions qui les lisent (`BtlMoveParam_GetSpeed` dans
+  `source/src/battle/btl_act_*.c`) ; 14 et 15 ne sont lues par aucune action → cachées.
+- Les valeurs cachées (`Field.hidden`) sont retirées d'un pack à son ouverture, avec un message
+  (`fields.drop_hidden`).
+
 ## Bibliothèque de mods (personnages de la communauté)
 
 - `bt3mod/library.py` : un mod (.7z via py7zr, .zip, dossier) est découpé en personnages et formes, d'après les

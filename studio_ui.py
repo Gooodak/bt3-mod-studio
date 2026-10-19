@@ -101,6 +101,7 @@ def setup(root, zoom=1.0):
         st.configure(name + "TFrame", background=bg)
         st.configure(name + "TLabel", background=bg, foreground=TEXT)
         st.configure(name + "Muted.TLabel", background=bg, foreground=MUTED, font=SMALL)
+        st.configure(name + "Warn.TLabel", background=bg, foreground=MOD_TEXT, font=SMALL)
         st.configure(name + "Hint.TLabel", background=bg, foreground=MUTED, font=FONT)
         st.configure(name + "Title.TLabel", background=bg, foreground=TEXT, font=SECTION)
         st.configure(name + "Accent.TLabel", background=bg, foreground=ACCENT, font=BOLD)
@@ -556,11 +557,14 @@ class CharList(ttk.Frame):
 
 
 class Picker(tk.Toplevel):
-    """A window to choose a character: search, chips, double click. .result = id, NONE, or None (closed)."""
+    """A window to choose a character (or a row of `names`, each with its chip): search, chips, double click.
+    .result = the index, NONE, or None (closed). The search takes every word typed, in any order ("goku bomb");
+    numbers=True: a number typed also finds the character of that number."""
     NONE = -1
     HIDDEN = False  # (kept invisible by the tests' screenshots)
 
-    def __init__(self, master, title, names, icons, allow_none=None, current=None, exclude=()):
+    def __init__(self, master, title, names, icons, allow_none=None, current=None, exclude=(), numbers=True,
+                 width=440, hint=None):
         super().__init__(master)
         self.withdraw()
         self.title(title)
@@ -569,9 +573,14 @@ class Picker(tk.Toplevel):
         self.result = None
         self.names = names
         self.exclude = set(exclude)
+        self.numbers = numbers
+        self.low = [n.lower() for n in names]
         top = ttk.Frame(self, style="Panel.TFrame", padding=(px(12), px(12), px(12), px(6)))
         top.pack(fill="x")
         ttk.Label(top, text=title, style="Panel.Title.TLabel").pack(anchor="w")
+        if hint:
+            ttk.Label(top, text=hint, style="Panel.Muted.TLabel", wraplength=pz(width - 30),
+                      justify="left").pack(anchor="w")
         self.q = tk.StringVar()
         e = ttk.Entry(top, textvariable=self.q, style="Search.TEntry")
         e.pack(fill="x", pady=(px(8), 0))
@@ -594,7 +603,7 @@ class Picker(tk.Toplevel):
         if current is not None and current >= 0:
             self.list.select(current)
         self.bind("<Escape>", lambda e: self.destroy())
-        w, h = pz(440), pz(580)
+        w, h = pz(width), pz(580)
         x = master.winfo_rootx() + (master.winfo_width() - w) // 2
         y = master.winfo_rooty() + (master.winfo_height() - h) // 3
         self.geometry(f"{w}x{h}+{max(0, x)}+{max(0, y)}")
@@ -606,8 +615,9 @@ class Picker(tk.Toplevel):
 
     def _filter(self):
         q = self.q.get().strip().lower()
+        words = q.split()
         ids = [c for c in range(len(self.names)) if c not in self.exclude and
-               (not q or q in self.names[c].lower() or q == str(c) or q == "%03d" % c)]
+               (all(w in self.low[c] for w in words) or self.numbers and (q == str(c) or q == "%03d" % c))]
         self.list.fill(ids, lambda c: "  " + self.names[c])
 
     def _first(self):

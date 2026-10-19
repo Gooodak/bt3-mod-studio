@@ -34,6 +34,7 @@ class Field:
     hi: float = None
     where: str = "costume"  # "costume": the character's costume packs; "roster": its row of the shared table
     kind: str = "value"     # "value": one number; "scale": a percentage applied to many numbers (see game.py)
+    hidden: bool = False    # not shown: tried in the test game, no use (HIDDEN_WHY); dropped from packs on loading
 
     @property
     def fmt(self):
@@ -63,11 +64,14 @@ class Field:
 
 SUPER_SLOTS = ["Blast 2 n°1", "Blast 2 n°2", "Ultime"]
 SKILL_SLOTS = ["Blast 1 n°1", "Blast 1 n°2"]
+# (source/include/battle/btl_tech_b.h BTL_KIBLAST_*, and the actions that play their animations: 0xAE standing,
+# 0xB0 while dashing, 0xB2 aimed down from the air, 0x95 the ki volley of a combo)
 KIBLAST_NAMES = [
-    "Rafale A (normale)", "Rafale A chargée niv. 1", "Rafale A chargée niv. 2", "Rafale A chargée niv. 3",
-    "Rafale B (normale)", "Rafale B chargée niv. 1", "Rafale B chargée niv. 2", "Rafale B chargée niv. 3",
-    "Rafale C (normale)", "Rafale C chargée niv. 1", "Rafale C chargée niv. 2", "Rafale C chargée niv. 3",
-    "Salve de ki",
+    "Tir de ki", "Tir de ki chargé (un peu)", "Tir de ki chargé (moyen)", "Tir de ki chargé (à fond)",
+    "Tir en dash", "Tir en dash chargé (un peu)", "Tir en dash chargé (moyen)", "Tir en dash chargé (à fond)",
+    "Tir vers le bas (en l'air)", "Vers le bas chargé (un peu)", "Vers le bas chargé (moyen)",
+    "Vers le bas chargé (à fond)",
+    "Salve de ki (combo)",
 ]
 
 S32 = 2 ** 31 - 1
@@ -81,7 +85,8 @@ _SUPER = [
     ("ki",          0x19C, "s32", 4, "Coût en ki", "20000 = 1 barre de ki (jauge pleine = 100000)", 0, 100000),
     ("recoil",      0x1A8, "s32", 4, "Dégâts subis par le lanceur", "10000 = 1 barre de vie", 0, S32),
     ("push",        0x16C, "f32", 4, "Puissance de recul", "x10 km/h", 0, 10000),
-    ("shotSpeed",   0x054, "f32", 4, "Vitesse du projectile", "x10 km/h", 0, 10000),
+    ("shotSpeed",   0x054, "f32", 4, "Vitesse du projectile", "x10 km/h ; plus lent se voit bien, plus rapide "
+                                                                 "peu (l'animation garde son rythme)", 0, 10000),
     ("shotTime",    0x024, "f32", 4, "Durée de vie du projectile", "secondes", 0, 60),
     ("shotTurn",    0x060, "f32", 4, "Guidage du projectile", "degrés par seconde", 0, 3600),
     ("chargeScale", 0x1D8, "f32", 4, "Multiplicateur à charge maximale", "1.5 = +50 %", 0, 100),
@@ -90,7 +95,7 @@ _SUPER = [
 for slot, slot_name in enumerate(SUPER_SLOTS):
     for name, off, typ, stride, label, hint, lo, hi in _SUPER:
         FIELDS.append(Field(f"super.{name}.{slot}", "Blast 2 & Ultime", slot_name, label, ENTRY_SUPER,
-                            off + slot * stride, typ, hint, lo, hi))
+                            off + slot * stride, typ, hint, lo, hi, hidden=name == "shots"))
 
 # ---- Blast 1 (skills): arrays of 2 -----------------------------------------------------------------------------
 _SKILL = [
@@ -113,7 +118,7 @@ _KIB = [
     ("damage", 0x04, "s32", "Dégâts", "10000 = 1 barre de vie", 0, S32),
     ("guardDamage", 0x08, "s32", "Dégâts si l'adversaire garde", "10000 = 1 barre de vie", 0, S32),
     ("ki",     0x0C, "s32", "Coût en ki", "20000 = 1 barre de ki", 0, 100000),
-    ("speed",  0x10, "f32", "Vitesse", "x10 km/h", 0, 10000),
+    ("speed",  0x10, "f32", "Vitesse", "x10 km/h : le temps que met le tir à arriver", 0, 10000),
     ("turn",   0x14, "f32", "Guidage", "degrés par seconde", 0, 3600),
     ("time",   0x18, "f32", "Durée de vie", "secondes", 0, 60),
     ("hits",   0x30, "s8",  "Nombre de coups", "1 à 127", 1, 127),
@@ -121,7 +126,7 @@ _KIB = [
 for k, kname in enumerate(KIBLAST_NAMES):
     for name, off, typ, label, hint, lo, hi in _KIB:
         FIELDS.append(Field(f"kiblast.{name}.{k}", "Rafales de ki", kname, label, ENTRY_KIBLAST,
-                            k * 0x34 + off, typ, hint, lo, hi))
+                            k * 0x34 + off, typ, hint, lo, hi, hidden=name == "hits"))
 
 # ---- General ----------------------------------------------------------------------------------------------------
 # The shared character table: common file 2 (pzs3us1/00001.bin), entry 7, one 16-byte row per character
@@ -130,7 +135,8 @@ ROSTER_FILE = 1
 ROSTER_ENTRY = 7
 ROSTER_ROW = 16
 FIELDS.append(Field("roster.health", "Général", "Vie, ki et blast stocks", "Vie maximale", ROSTER_ENTRY, 0x0, "s32",
-                    "10000 = 1 barre (de 1 à 7 barres)", 10000, 70000, where="roster"))
+                    "10000 = 1 barre ; l'écran en montre 7 au plus, au-delà la vie compte quand même",
+                    10000, 150000, where="roster"))
 FIELDS.append(Field("roster.kiStart", "Général", "Vie, ki et blast stocks", "Ki au début du combat", ROSTER_ENTRY, 0x4,
                     "s32", "20000 = 1 barre (jauge pleine = 100000)", 0, 100000, where="roster"))
 FIELDS.append(Field("roster.stocks", "Général", "Vie, ki et blast stocks", "Nombre de blast stocks", ROSTER_ENTRY, 0xC,
@@ -159,12 +165,48 @@ ATK_ENTRY = 18      # 0xA3 melee attack records of 0x30 bytes (BtlAtkRecord, sou
 ATK_COUNT = 0xA3
 ATK_SIZE = 0x30
 
-# ---- Movement: the 20 speeds (their individual meaning is not established yet) ----------------------------------
+# ---- Movement: the 20 speeds, by the action handlers that read them (BtlMoveParam_GetSpeed in
+# source/src/battle/btl_act_*.c; fighter flag 0x11 = in water picks the odd one of a pair) ----------------------
+MOVE_NAMES = [
+    "Déplacement", "Déplacement dans l'eau", "Déplacement près de l'adversaire", "Près de l'adversaire, dans l'eau",
+    "Dash", "Dash dans l'eau", "Dash droit sur l'adversaire", "Dragon Dash",
+    "Dragon Dash : montée", "Montée et descente rapides", "Pas vers l'adversaire", "Pas de côté",
+    "Pas de côté : rotation", "Saut : vitesse en l'air", "(inconnue)", "(inconnue)",
+    "Montée", "Descente", "Esquive éclair (Vanish)", "Dash en cercle autour de l'adversaire",
+]
+MOVE_GROUPS = [
+    ("Se déplacer", [0, 2, 13, 16, 17, 9]),
+    ("Dashs", [4, 6, 7, 8, 19]),
+    ("Pas et esquives", [11, 12, 10, 18]),
+    ("Dans l'eau", [1, 3, 5]),
+]
 for i in range(20):
-    FIELDS.append(Field(f"move.speed.{i}", "Déplacements", "Vitesses", f"Vitesse n°{i + 1}", ENTRY_MOVE, i * 4,
-                        "f32", "x10 km/h (rôle exact pas encore identifié)", 0, 4000))
+    FIELDS.append(Field(f"move.speed.{i}", "Déplacements", "Vitesses", MOVE_NAMES[i], ENTRY_MOVE, i * 4,
+                        "f32", "x10 km/h", 0, 4000, hidden=i in (14, 15)))  # (14, 15: read by no action found)
 
 BY_KEY = {f.key: f for f in FIELDS}
+HIDDEN_WHY = {
+    "super.shots": "le « nombre de projectiles » d'une technique n'en ajoute pas : il divise les dégâts de chaque "
+                   "coup (essayé : Kamehameha, Chou Makouhou Barrage)",
+    "kiblast.hits": "le « nombre de coups » d'un tir de ki ne change rien en combat",
+    "move.speed": "deux vitesses de déplacement qu'aucune action du jeu ne lit",
+}
+
+
+def drop_hidden(pack):
+    """Takes the values of hidden fields out of a pack (they were shown by earlier versions); returns the reasons
+    of what was taken out (HIDDEN_WHY), one each."""
+    why = []
+    for ch in list(pack.get("characters", {}).values()) + list(pack.get("added", [])):
+        values = ch.get("fields", {})
+        for key in [k for k in values if k in BY_KEY and BY_KEY[k].hidden]:
+            del values[key]
+            reason = HIDDEN_WHY.get(key.rsplit(".", 1)[0], "")
+            if reason and reason not in why:
+                why.append(reason)
+        if "fields" in ch and not values:
+            del ch["fields"]
+    return why
 GROUPS = ["Général", "Blast 2 & Ultime", "Blast 1", "Rafales de ki", "Déplacements"]
 
 
