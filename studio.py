@@ -1,6 +1,7 @@
 """BT3 Mod Studio: a window to change the characters of Dragon Ball Z Budokai Tenkaichi 3 (Tenkaichi3Decomp)."""
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -206,8 +207,7 @@ class Studio(tk.Tk):
         self._build_portrait(body)
         self._build_editor(body)
         self._sizes()
-        mode = appcache.settings().get("edition")
-        self.extended = mode == "etendue" if mode in ("etendue", "standard") else self.game.edition() == "etendu"
+        self.extended = self.game.edition() != "officielle"  # (the tool follows the game installed)
         self._edition_look()
         self.saved = self._snapshot()  # the pack as it was last saved or opened
         self.refresh_list()
@@ -289,6 +289,11 @@ class Studio(tk.Tk):
             put(ttk.Button(left, text=text, command=cmd), (0, px(6)), tip=tip)
         put(ttk.Frame(left, style="Panel.TFrame"), weight=100)  # (the room left over goes here)
         # (a fixed width: "● Non appliqué" and "✓ Appliqué" do not move the buttons)
+        self.game_btn = ttk.Button(right, text="Jeu : …", style="Game.TButton", command=self.open_updates)
+        self.game_btn.pack(side="left", padx=(0, px(14)))
+        ui.Tooltip(self.game_btn, lambda: (self.update_note + "\n" if self.update_note else "") +
+                   "Ton jeu : son édition et sa version. Clique pour les mises à jour et pour changer d'édition.")
+        self.update_note, self.update_found = "", {}
         self.state_lbl = ttk.Label(right, text="", style="Panel.Muted.TLabel", width=15, anchor="e")
         self.state_lbl.pack(side="left", padx=(0, px(10)))
         ui.Tooltip(self.state_lbl, lambda: "Le jeu utilise ce pack tel qu'il est." if "✓" in self.state_lbl.cget(
@@ -307,22 +312,6 @@ class Studio(tk.Tk):
         bar = ttk.Frame(self, style="Panel.TFrame", padding=(px(12), px(3), px(8), px(3)))
         bar.pack(fill="x", side="bottom")
         ttk.Button(bar, text="Raccourcis clavier (F1)", style="Seg.TButton", command=self.show_help).pack(side="right")
-        ed = ttk.Frame(bar, style="Panel.TFrame")
-        ed.pack(side="right", padx=(0, px(16)))
-        ttk.Label(ed, text="Édition", style="Panel.Muted.TLabel").pack(side="left", padx=(0, px(6)))
-        self.ed_std = ttk.Button(ed, text="Standard", style="Seg.TButton", command=lambda: self.set_extended(False))
-        self.ed_std.pack(side="left")
-        self.ed_ext = ttk.Button(ed, text="Étendue", style="Seg.TButton", command=lambda: self.set_extended(True))
-        self.ed_ext.pack(side="left", padx=(px(4), 0))
-        ui.Tooltip(self.ed_std, "Pour le jeu officiel : tout ce qu'il comprend (personnages modifiés, remplacés, "
-                                "attaques, valeurs). Les personnages ajoutés restent dans le pack mais ne sont ni "
-                                "montrés ni écrits dans le jeu.")
-        ui.Tooltip(self.ed_ext, "Pour l'édition étendue du port : en plus, les personnages ajoutés et les mods de "
-                                "personnages de la communauté.")
-        self.update_btn = ttk.Button(bar, text="Mises à jour", style="Seg.TButton", command=self.open_updates)
-        self.update_btn.pack(side="right", padx=(0, px(10)))
-        ui.Tooltip(self.update_btn, lambda: self.update_note or "Vérifier si l'outil ou le jeu ont une nouvelle version")
-        self.update_note, self.update_found = "", {}
         zoom = ttk.Frame(bar, style="Panel.TFrame")
         zoom.pack(side="right", padx=(0, px(16)))
         ttk.Label(zoom, text="Taille du texte", style="Panel.Muted.TLabel").pack(side="left", padx=(0, px(6)))
@@ -688,37 +677,46 @@ class Studio(tk.Tk):
     def _added_note(self):
         """What a pack's added characters become in the standard edition (said after a pack is opened)."""
         n = len(self.added())
-        return (f" Il contient {n} personnage(s) ajouté(s) : passe en édition « Étendue » (en bas) pour les voir."
-                if n and not self.extended else "")
+        return (f" Il contient {n} personnage(s) ajouté(s) : ils demandent l'édition étendue du jeu (clique sur "
+                "« Jeu : … » en haut)." if n and not self.extended else "")
 
     def _edition_look(self):
-        self.ed_std.configure(style="Seg.TButton" if self.extended else "SegOn.TButton")
-        self.ed_ext.configure(style="SegOn.TButton" if self.extended else "Seg.TButton")
+        """What the installed game allows, shown: the badge at the top, the buttons of the extended edition."""
+        from bt3mod import updates
+        ed = self.game.edition()
+        have = updates.installed(self.game)
+        tag = have.get("tag") if have.get("edition") == ("etendu" if ed == "etendu" else "officielle") else None
+        if not tag and ed == "officielle":
+            tag = (self.update_found.get("official") or {}).get("have")
+        version = re.match(r"v?(\d+\.\d+\.\d+(\.\d+)?)", tag or "")
+        text = {"etendu": "Jeu : édition étendue", "officielle": "Jeu : édition officielle"}.get(ed, "Jeu : introuvable")
+        text += f" · {version.group(1)}" if version else ""
+        news = bool(self.update_note)
+        self.game_btn.configure(text=("● " if news else "") + text,
+                                style="GameHot.TButton" if news else "GameExt.TButton" if ed == "etendu" else
+                                "Game.TButton")
         for b, text in ((self.add_btn, "＋  Ajouter un personnage"), (self.mods_btn, "Mods de personnages…")):
             b.configure(state="normal" if self.extended else "disabled",
                         text=text if self.extended else text.rstrip("…") + " (édition étendue)")
 
-    def set_extended(self, on, save=True):
-        """Standard (the official game) or extended edition: what the window offers and what Apply writes. The
-        choice is remembered (save=False: the tests, which leave the person's settings alone)."""
-        if on == self.extended:
+    def sync_edition(self):
+        """The game installed may have changed (the "Mon jeu" window, or by hand): the tool follows it. In the
+        official edition, the pack's added characters stay in it but are neither listed nor written."""
+        on = self.game.edition() != "officielle"
+        changed, self.extended = on != self.extended, on
+        self._edition_look()  # (the badge always: its version may have changed)
+        if not changed:
             return
-        self.extended = on
-        if save:
-            appcache.save_settings(edition="etendue" if on else "standard")
-        self._edition_look()
         if not on and self.is_added(self.chara):
             self.select(0)
         self.refresh_list()
         self._dirty()
         n = len(self.added())
         if on:
-            self.status.set("Édition étendue : personnages ajoutés et mods de personnages."
-                            + ("" if self.game.edition() == "etendu" else " Le jeu installé est l'officiel : "
-                               "« Mises à jour » → « Passer à l'édition étendue »."))
+            self.status.set("Ton jeu est l'édition étendue : personnages ajoutés et mods de personnages possibles.")
         else:
-            self.status.set("Édition standard (jeu officiel)."
-                            + (f" {n} ajouté(s) gardé(s) dans le pack, pas écrit(s)." if n else ""))
+            self.status.set("Ton jeu est l'édition officielle."
+                            + (f" {n} personnage(s) ajouté(s) gardé(s) dans le pack, pas écrit(s)." if n else ""))
 
     def name_of(self, c):
         """The name a character goes by in the window (an added one: the name it was given)."""
@@ -1615,8 +1613,7 @@ class Studio(tk.Tk):
                     if on]  # (switching to the extended edition is offered in the window, not an update)
             self.update_note = ("Mise à jour disponible pour " + " et ".join(news) + " : clique pour voir.") if news \
                 else ""
-            self.update_btn.configure(text="● Mise à jour disponible" if news else "Mises à jour",
-                                      style="SegHot.TButton" if news else "Seg.TButton")
+            self._edition_look()
             if done:
                 done()
         t = threading.Thread(target=work, daemon=True)
@@ -1628,12 +1625,12 @@ class Studio(tk.Tk):
         from bt3mod import updates
         win = tk.Toplevel(self)
         win.withdraw()
-        win.title("Mises à jour")
+        win.title("Mon jeu")
         win.configure(bg=ui.PANEL)
         win.transient(self)
         box = ttk.Frame(win, style="Panel.TFrame", padding=(px(18), px(14), px(18), px(14)))
         box.pack(fill="both", expand=True)
-        ttk.Label(box, text="Mises à jour", style="Panel.Title.TLabel").pack(anchor="w")
+        ttk.Label(box, text="Mon jeu", style="Panel.Title.TLabel").pack(anchor="w")
         body = ttk.Frame(box, style="Panel.TFrame")
         body.pack(fill="x", pady=(px(8), 0))
         busy = ttk.Label(box, text="", style="Panel.Accent.TLabel")
@@ -1660,30 +1657,35 @@ class Studio(tk.Tk):
             for w in body.winfo_children():
                 w.destroy()
             f = self.update_found
-            if f.get("tool"):
-                line(body, f"BT3 Mod Studio {updates.TOOL_VERSION}",
-                     f"Nouvelle version : {f['tool']['tag']}. L'outil se fermera, se mettra à jour et se rouvrira.",
-                     "Mettre à jour l'outil", run_tool)
-            else:
-                line(body, f"BT3 Mod Studio {updates.TOOL_VERSION}",
-                     "À jour." if "tool_error" not in f else f"Vérification impossible : {f['tool_error']}.")
             edition = self.game.edition()
             have = updates.installed(self.game)
-            label = {"etendu": "édition étendue", "officielle": "édition officielle"}.get(edition, "introuvable")
-            title = f"Le jeu : {label}" + (f" ({have['tag']})" if have.get("tag") and edition == "etendu" else "")
+            o = f.get("official")
+            tag = have.get("tag") if have.get("edition") == edition else ""
+            if not tag and edition == "officielle" and o and o.get("have"):
+                tag = o["have"] + ("" if o["exact"] else " (d'après la date de l'exe)")
             kept = os.path.exists(os.path.join(updates.game_dir(self.game), "Tenkaichi3Decomp-officielle.exe"))
             back = ("Revenir à l'édition officielle", run_back) if edition == "etendu" and kept else (None, None)
-            if f.get("game"):
-                switching = edition != "etendu"
-                line(body, title,
-                     (f"L'édition étendue {f['game']['tag']} est disponible : personnages ajoutés, jeu en ligne "
-                      "avec les mêmes mods. L'exe officiel est gardé de côté pour revenir en arrière."
-                      if switching else f"Nouvelle version : {f['game']['tag']}.") + " Le jeu doit être fermé.",
-                     "Passer à l'édition étendue" if switching else "Mettre à jour le jeu", run_game, *back)
+            if edition == "etendu":
+                title = "Ton jeu : édition étendue" + (f" {tag}" if tag else "")
+                text = ("Tout est possible : personnages modifiés, remplacés et ajoutés, mods de personnages de la "
+                        "communauté, jeu en ligne avec les mêmes mods.")
+                if f.get("game"):
+                    line(body, title, text + f"\nNouvelle version : {f['game']['tag']}. Le jeu doit être fermé.",
+                         "Mettre à jour le jeu", run_game, *back)
+                else:
+                    line(body, title, text + ("\nÀ jour." if "game_error" not in f else
+                                              f"\nVérification impossible : {f['game_error']}."), None, None, *back)
+            elif edition == "officielle":
+                line(body, "Ton jeu : édition officielle" + (f" {tag}" if tag else ""),
+                     "Possible : personnages modifiés et remplacés, attaques, valeurs. Pas possible : personnages "
+                     "ajoutés, mods de la communauté, jeu en ligne avec des mods.")
+                if f.get("game"):
+                    line(body, f"L'édition étendue {f['game']['tag']}",
+                         "Le même jeu, avec en plus les personnages ajoutés et le jeu en ligne avec les mêmes mods. "
+                         "L'exe officiel est gardé de côté pour revenir en arrière. Le jeu doit être fermé.",
+                         "Passer à l'édition étendue", run_game)
             else:
-                line(body, title, ("À jour." if "game_error" not in f else
-                                   f"Vérification impossible : {f['game_error']}."), None, None, *back)
-            o = f.get("official")
+                line(body, "Ton jeu : introuvable", "Aucun Tenkaichi3Decomp.exe à côté des données du jeu.")
             if o:
                 rel, date = o["latest"], o["latest"].get("date", "")[:10]
                 when = f" (publiée le {date[8:10]}/{date[5:7]}/{date[:4]})" if date else ""
@@ -1703,6 +1705,13 @@ class Studio(tk.Tk):
                          "L'édition étendue est à jour avec elle.")
             elif "official_error" in f:
                 line(body, "Version officielle de z3xox", f"Vérification impossible : {f['official_error']}.")
+            if f.get("tool"):
+                line(body, f"L'outil : BT3 Mod Studio {updates.TOOL_VERSION}",
+                     f"Nouvelle version : {f['tool']['tag']}. L'outil se fermera, se mettra à jour et se rouvrira.",
+                     "Mettre à jour l'outil", run_tool)
+            else:
+                line(body, f"L'outil : BT3 Mod Studio {updates.TOOL_VERSION}",
+                     "À jour." if "tool_error" not in f else f"Vérification impossible : {f['tool_error']}.")
             win.update_idletasks()
             win.geometry(f"{max(win.winfo_reqwidth(), ui.pz(520))}x{win.winfo_reqheight()}")  # (fits its content)
 

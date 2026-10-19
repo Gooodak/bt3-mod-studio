@@ -48,8 +48,9 @@ dossier `Tenkaichi3Decomp` et accepte de remplacer les fichiers. Tes données de
 2. Double-clique sur **BT3 Mod Studio.exe**. La première fois, il prépare les portraits (quelques secondes).
    S'il ne trouve pas le jeu, il te demande où il est.
 
-Un seul outil sert pour les deux éditions : il voit tout seul laquelle est installée, et le bouton **Édition :
-Standard / Étendue** (en bas de la fenêtre) permet de changer. Les **personnages ajoutés**
+Un seul outil sert pour les deux éditions : il voit tout seul laquelle est installée et l'affiche en haut à
+droite (« **Jeu : édition étendue** » ou « **Jeu : édition officielle** »). Un clic dessus ouvre **Mon jeu**, d'où
+l'on passe d'une édition à l'autre. Les **personnages ajoutés**
 ne marchent qu'avec l'édition étendue ; l'outil prévient si ton jeu est l'officielle.
 
 ## 4. Faire un pack
@@ -93,8 +94,9 @@ Les codes de salon du menu « Tenkaichi Budokai Online » ne marchent pas encore
 
 ## 7. Mettre à jour
 
-Le plus simple : le bouton **Mises à jour** en bas de l'outil. Il devient orange quand une nouvelle version existe
-et s'occupe de tout : l'outil se ferme, se met à jour et se rouvre ; le jeu (fermé) est mis à jour, ou passe de
+Le plus simple : le badge **Jeu : …** en haut à droite de l'outil (fenêtre **Mon jeu**). Il devient orange quand
+une nouvelle version existe (de l'outil, de l'édition étendue, ou de la version officielle de z3xox) et s'occupe de
+tout : l'outil se ferme, se met à jour et se rouvre ; le jeu (fermé) est mis à jour, ou passe de
 l'édition officielle à l'étendue (l'exe officiel est gardé, « Revenir à l'édition officielle » le remet).
 
 À la main, si besoin :

@@ -18,10 +18,11 @@ Ce qui est important à savoir pour continuer le projet : décisions prises, rè
     faut ni l'utiliser ni contourner sa clé) : on joue par adresse (F1 > Online), ou plus tard avec notre propre
     service Cloudflare (`BT3_MATCH_URL`, `port/matchmaking/README.md`, demande un compte Cloudflare) ;
   - les mises à jour annoncées par le jeu viennent de notre dépôt (`PORT_UPDATE_REPO`).
-- **Un seul outil** pour les deux : bouton **Édition : Standard / Étendue** en bas (`Studio.set_extended`, réglage
-  `edition` dans `settings.json` ; la première fois, d'après l'édition installée, `game.edition()`). En Standard, les
-  personnages ajoutés restent dans le pack mais ne sont ni montrés ni écrits (`game.apply(pack, added=False)`), et
-  « Ajouter un personnage » / « Mods de personnages » sont désactivés.
+- **Un seul outil, une seule vérité** : l'outil suit l'exe installé (`game.edition()`, `Studio.sync_edition`), il
+  n'y a pas de réglage à part (un bouton Standard/Étendue a existé un jour, il embrouillait : retiré le 19/10). Le
+  badge « Jeu : … » en haut à droite montre l'édition et la version, et ouvre la fenêtre **Mon jeu** (mises à jour,
+  changement d'édition). Avec l'officielle, les personnages ajoutés restent dans le pack mais ne sont ni montrés ni
+  écrits (`game.apply(pack, added=False)`), et « Ajouter un personnage » / « Mods de personnages » sont désactivés.
 
 ## Licences (important)
 
@@ -46,8 +47,8 @@ En ligne, tous les joueurs doivent avoir la même version (le jeu le vérifie).
 
 - Au démarrage, l'outil demande à GitHub (en arrière-plan) la dernière version de l'outil (`Gooodak/bt3-mod-studio`,
   tags `v1.0.0`, `v1.0.1`… ; la version de l'outil est `TOOL_VERSION` dans `bt3mod/updates.py`, à monter à chaque
-  version publiée) et de l'édition étendue (`Gooodak/bt3-port-etendu`). Le bouton « Mises à jour » en bas passe en
-  orange quand il y a du nouveau.
+  version publiée) et de l'édition étendue (`Gooodak/bt3-port-etendu`). Le badge « Jeu : … » en haut passe en
+  orange quand il y a du nouveau (le badge « Jeu : … » en haut).
 - Outil : téléchargé, puis copié par un petit script une fois l'outil fermé, et relancé.
 - Version officielle de z3xox (`z3xox/Tenkaichi3Decomp`) : en édition officielle, l'outil compare la version installée
   (connue si l'outil l'a installée, sinon devinée d'après la date de l'exe : la dernière publiée avant) et propose
@@ -94,7 +95,7 @@ dans WSL : `testkit-src/rebuild_etendu.sh` (jeu de test), `testkit-src/release_e
 
 ## À faire / en attente
 
-- Installer l'édition étendue sur le jeu du joueur : il peut le faire lui-même (« Mises à jour » → « Passer à
+- Installer l'édition étendue sur le jeu du joueur : FAIT le 18/10 par lui-même (« Mon jeu » → « Passer à
   l'édition étendue »).
 - Notre service de mise en relation (codes de salon) : attend un compte Cloudflare.
 - Changer le personnage de base d'un mod importé depuis la fenêtre (aujourd'hui : deviné, écrit dans character.txt).

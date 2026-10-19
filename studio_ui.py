@@ -142,6 +142,13 @@ def setup(root, zoom=1.0):
     st.configure("SegHot.TButton", background=MOD_BG, foreground=MOD_TEXT, bordercolor=ACCENT, lightcolor=MOD_BG,
                  darkcolor=MOD_BG, padding=(px(10), px(3)), font=SMALL)  # (something to look at: an update)
     st.map("SegHot.TButton", background=[("active", ACCENT_DK)], foreground=[("active", TEXT)])
+    # the badge of the installed game at the top (its edition and version; orange with an update)
+    for name, fg, bg in (("Game", MUTED, PANEL), ("GameExt", GOOD, PANEL), ("GameHot", MOD_TEXT, MOD_BG)):
+        st.configure(name + ".TButton", background=bg, foreground=fg, bordercolor=fg, lightcolor=bg, darkcolor=bg,
+                     relief="solid",
+                     padding=(px(10), px(5)), font=BOLD)
+        st.map(name + ".TButton", background=[("active", FIELD_HI)], lightcolor=[("active", FIELD_HI)],
+               darkcolor=[("active", FIELD_HI)])
     st.configure("SegOn.TButton", background=FIELD_HI, foreground=TEXT, bordercolor=ACCENT, lightcolor=FIELD_HI,
                  darkcolor=FIELD_HI, padding=(px(10), px(3)), font=SMALL)
 

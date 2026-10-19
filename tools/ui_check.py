@@ -44,7 +44,6 @@ def main():
     studio.Studio.HIDDEN = True
     app = studio.Studio(kit.DATA)
     app.attributes("-alpha", 0.0)
-    app.set_extended(True, save=False)  # (whatever the person chose: the tests make added characters)
     pump(app)
     check("window opens on the test game's data", app.game.root == kit.DATA, f"{time.time() - t0:.2f} s")
 
@@ -103,8 +102,12 @@ def main():
     went = (app.chara, app.current)
     tree.event_generate("<Control-Up>")
     pump(app)
-    check("keyboard shortcuts (Ctrl+↓, Ctrl+3, Ctrl+↑)", went == (153, "Stats") and app.chara == 152,
-          f"{went} then {app.chara}")
+    if app.focus_get() is None:  # (another program has the keyboard: Windows does not let a test take it)
+        print("SKIP  keyboard shortcuts (Ctrl+↓, Ctrl+3, Ctrl+↑)          another program has the keyboard",
+              flush=True)
+    else:
+        check("keyboard shortcuts (Ctrl+↓, Ctrl+3, Ctrl+↑)", went == (153, "Stats") and app.chara == 152,
+              f"{went} then {app.chara}")
     app.show_tab("Personnage")
     pump(app)
 
@@ -131,14 +134,16 @@ def main():
           and "＋ Vegeta X" in app._row_text(added), str({k: e[k] for k in e if k != "texts"}))
     # the edition switch: in the standard one the added character is out of the list (kept in the pack) and the
     # buttons of the extended one are off; back in the extended one, all is there again
-    app.set_extended(False, save=False)
+    app.game._cache["edition"] = "officielle"  # (as if the official game were installed)
+    app.sync_edition()
     pump(app)
     hidden = (str(added) not in app.list.tree.get_children() and str(app.add_btn.cget("state")) == "disabled"
               and len(app.added()) == 1 and app.chara != added)
-    app.set_extended(True, save=False)
+    app.game._cache["edition"] = "etendu"
+    app.sync_edition()
     pump(app)
     back = str(added) in app.list.tree.get_children() and str(app.add_btn.cget("state")) == "normal"
-    check("edition switch: standard hides the added character", hidden and back, f"hidden {hidden}, back {back}")
+    check("the tool follows the game: official hides the added one", hidden and back, f"hidden {hidden}, back {back}")
     app.select(152)
     app.show_tab("Personnage")
     pump(app)
