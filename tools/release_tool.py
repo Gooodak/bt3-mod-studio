@@ -23,7 +23,7 @@ def main():
     work = tempfile.mkdtemp(prefix="bt3ms_release_")
     try:
         clone = os.path.join(work, "src")
-        subprocess.run(["git", "clone", "-q", "--local", ROOT, clone], check=True)
+        subprocess.run(["git", "clone", "-q", "--no-hardlinks", ROOT, clone], check=True)
         if subprocess.run([sys.executable, "-I", os.path.join(clone, "tools", "build_exe.py")], cwd=clone).returncode:
             print("FAILED: build")
             return 1
