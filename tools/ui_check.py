@@ -67,7 +67,7 @@ def main():
     check("a graft too big for the game is refused at once", len(warned) == 1 and "ne rentre pas" in warned[0]
           and not app.pack["characters"]["152"].get("transplants"), warned[0][:90] if warned else "no warning")
     app._set_graft("super", 2, 33, 0)  # Super Vegeta's Big Bang Attack as the Ultimate
-    app._set_graft("skill", 1, 0, 0)  # Goku (Early)'s Solar Flare as the Blast 1 n°2
+    app._set_graft("skill", 1, 0, 0)  # Goku (Early)'s Solar Flare as the 2nd Blast 1
     pump(app)
     app.rows["super.damage.2"].var.set("22220")
     # transformations: R3 + right -> Goku (End) Super Saiyan 3, cost 3; and it is offered in the grid cell

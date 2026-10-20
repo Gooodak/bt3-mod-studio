@@ -18,9 +18,10 @@ from studio_ui import px  # noqa: E402
 TITLE = "BT3 Mod Studio"
 NAME_LANGS = [("en", "Anglais (jeu US)"), ("fr", "Français")]
 TRANSFORM_KEYS = ["R3 + ←", "R3 + ↑", "R3 + →", "R3 + ↓   retour"]
-# the special moves in the order of the move list: (title, fields prefix, slot, index in the list)
-SPECIALS = [("Blast 1 n°1", "skill", 0, 0), ("Blast 1 n°2", "skill", 1, 1), ("Blast 2 n°1", "super", 0, 2),
-            ("Blast 2 n°2", "super", 1, 3), ("Ultime", "super", 2, 4)]
+# the special moves in the order of the move list: (place, fields prefix, slot, index in the list)
+SPECIALS = [(fields.SKILL_SLOTS[0], "skill", 0, 0), (fields.SKILL_SLOTS[1], "skill", 1, 1),
+            (fields.SUPER_SLOTS[0], "super", 0, 2), (fields.SUPER_SLOTS[1], "super", 1, 3),
+            (fields.SUPER_SLOTS[2], "super", 2, 4)]
 KIBLAST_COLS = [("damage", "Dégâts"), ("guardDamage", "Si gardé"), ("ki", "Coût en ki"), ("speed", "Vitesse"),
                 ("turn", "Guidage"), ("time", "Durée")]
 PAGES = ["Personnage", "Attaques", "Stats", "Rafales de ki", "Déplacements"]
@@ -1332,15 +1333,17 @@ class Studio(tk.Tk):
     # -- Attaques: each special move with its name, the attack it may take from another character, its values
     def _page_attacks(self, inner):
         box = ui.card(inner, "Changer une attaque", "Blast 1, Blast 2 et Ultime")
+        ui.hint(box, "Une fiche par attaque, dans l'ordre de la liste des commandes : les deux Blast 1 (techniques "
+                     "de soutien, avec les blast stocks), les deux Blast 2 (avec le ki), puis l'Ultime.", pady=(0, 6))
         ui.hint(box, "Pour donner à ce personnage l'attaque d'un autre : dans sa fiche ci-dessous, clique sur "
                      "« Remplacer par », choisis le personnage, puis laquelle de ses attaques. Toute l'attaque vient "
                      "avec : animation, effets, valeurs et nom (les voix restent celles du personnage). Un Blast 1 se "
                      "remplace par un Blast 1 ; un Blast 2 ou l'Ultime par un Blast 2 ou un Ultime.", pady=(0, 0))
         self.atk_cards, self.name_vars = [], {}
-        for title, prefix, slot, idx in SPECIALS:
-            box = ui.card(inner, title, "", accent=(prefix == "super" and slot == 2))
+        for place, prefix, slot, idx in SPECIALS:
+            box = ui.card(inner, place, "", accent=(prefix == "super" and slot == 2))
             kind = "skill" if prefix == "skill" else "super"
-            card = {"box": box, "idx": idx, "kind": kind, "slot": slot}
+            card = {"box": box, "idx": idx, "kind": kind, "slot": slot, "place": place}
             self._name_row(box, idx)
             row = ttk.Frame(box, style="Card.TFrame")
             row.pack(anchor="w", pady=(px(2), px(2)))
@@ -1405,8 +1408,7 @@ class Studio(tk.Tk):
             self._paint_name(item["entry"], item["var"].get() != orig)
         grafts = self._grafts()
         for card in self.atk_cards:
-            idx = card["idx"]
-            card["box"].sub.configure(text=names["en"][idx].strip() if idx < len(names["en"]) else "")
+            self._title_attack(card)
             t = grafts.get((card["kind"], card["slot"]))
             card["btn"].set(int(t["from"]) if t else None)
             if t:
@@ -1415,6 +1417,20 @@ class Studio(tk.Tk):
                 card["extra"].pack(side="left", fill="y")
             else:
                 card["extra"].pack_forget()
+
+    def _attack_name(self, idx):
+        """The name an attack shows in the tool: its French name (as edited), else its English one."""
+        for lang in ("fr", "en"):
+            item = self.name_vars.get((lang, idx))
+            if item and item["var"].get().strip():
+                return item["var"].get().strip()
+        return ""
+
+    def _title_attack(self, card):
+        """A card is titled with the attack's name; its place in the move list goes beside it."""
+        name = self._attack_name(card["idx"])
+        card["box"].title.configure(text=name or card["place"])
+        card["box"].sub.configure(text=card["place"] if name else "")
 
     @staticmethod
     def _paint_name(e, changed):
@@ -1431,6 +1447,9 @@ class Studio(tk.Tk):
         else:
             texts.pop(str(i), None)
         self._paint_name(item["entry"], str(i) in texts)
+        for card in self.atk_cards:
+            if card["idx"] == i:
+                self._title_attack(card)
         self._refresh_row()
 
     def _attack_rows(self, kind):
@@ -1465,7 +1484,10 @@ class Studio(tk.Tk):
         icons = {i: self.icons.get(k) for i, (k, j, _) in enumerate(rows) if self.icons.get(k) is not None}
         current = next((i for i, (k, j, _) in enumerate(rows)
                         if cur and (k, j) == (int(cur["from"]), int(cur["fromSlot"]))), None)
-        p = ui.Picker(self, f"Attaque à mettre en {slots[slot]}", names, icons, allow_none="Garder la sienne",
+        own = self._attack_name(slot + (2 if kind == "super" else 0))  # its index in the move list
+        title = f"Attaque à mettre à la place de « {own} » ({slots[slot]})" if own else \
+            f"Attaque à mettre en {slots[slot]}"
+        p = ui.Picker(self, title, names, icons, allow_none="Garder la sienne",
                       current=current, numbers=False, width=600,
                       hint="Tape le nom d'une attaque, d'un personnage, ou les deux (« spirit goku »).")
         return p, rows

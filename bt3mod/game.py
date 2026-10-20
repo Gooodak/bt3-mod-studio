@@ -201,7 +201,7 @@ class Game:
         return [n for _, n in movetext.specials(movetext.decode(e[movetext.LANGS[lang][0]]))]
 
     def technique_names(self, chara, lang="en"):
-        """The names of a character's three techniques (Blast 2 n°1, Blast 2 n°2, Ultimate), when its move list
+        """The names of a character's three techniques (1st and 2nd Blast 2, Ultimate), when its move list
         has the standard order (Blast 1 x2, Blast 2 x2, Ultimate, Hyper Smash); else None for each."""
         names = self.move_names(chara, lang)
         if len(names) == 6:

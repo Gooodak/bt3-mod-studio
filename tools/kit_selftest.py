@@ -152,7 +152,7 @@ def main(full):
     kit.ensure()
 
     # a Blast 1 moved between characters: Vegeta's Explosive Wave in place of Goku (Early)'s Solar Flare hits like
-    # Vegeta's own (walk up to the opponent; hold charge, then press guard: Blast 1 n°1)
+    # Vegeta's own (walk up to the opponent; hold charge, then press guard: the 1st Blast 1)
     t = time.time()
     skill_in = ["hold 70 - up", "hold 6 l2", "hold 6 l2+circle", "hold 6 -"]
     gain = {"param.blastGain": 1000000, "roster.kiStart": 100000}

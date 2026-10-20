@@ -62,8 +62,8 @@ class Field:
         return value
 
 
-SUPER_SLOTS = ["Blast 2 n°1", "Blast 2 n°2", "Ultime"]
-SKILL_SLOTS = ["Blast 1 n°1", "Blast 1 n°2"]
+SUPER_SLOTS = ["1er Blast 2", "2e Blast 2", "Ultime"]
+SKILL_SLOTS = ["1er Blast 1", "2e Blast 1"]
 # (source/include/battle/btl_tech_b.h BTL_KIBLAST_*, and the actions that play their animations: 0xAE standing,
 # 0xB0 while dashing, 0xB2 aimed down from the air, 0x95 the ki volley of a combo)
 KIBLAST_NAMES = [
